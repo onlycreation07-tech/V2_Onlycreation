@@ -1,52 +1,52 @@
+import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import http from 'http';
 import path from 'path';
 import crypto from 'crypto';
-import { Readable } from 'stream';
 import dotenv from 'dotenv';
 import { WebSocketServer, WebSocket } from 'ws';
 import { initializeApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  orderBy, 
-  limit, 
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  collection,
+  addDoc,
+  query,
+  where,
+  orderBy,
+  limit,
   getDocs,
   runTransaction
 } from 'firebase/firestore';
-import { GoogleGenAI, Type, Modality, GenerateVideosOperation } from '@google/genai';
+import { GoogleGenAI, Type, Modality } from '@google/genai';
 import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
 
 // Modular Controllers & Middleware
 import { verifyAuthToken, optionalAuthToken } from './server/middleware/auth';
 import { handleCalculateStudioPrice, handleCalculateDispatchPrice } from './server/controllers/pricingController';
 import { handleCreateBookingLock, handleReleaseBookingLock, handleCheckAvailability } from './server/controllers/bookingController';
-import { 
-  handleVerifyPaymentIdempotent, 
-  handlePaymentWebhook, 
+import {
+  handleVerifyPaymentIdempotent,
+  handlePaymentWebhook,
   handleGetWalletSummary,
   creditWalletAndRecordLedgerServer,
   debitWalletAndRecordLedgerServer
 } from './server/controllers/paymentController';
-import { 
-  handleAnalyzeReferenceVideo, 
-  handleGetCuratedReferences, 
-  handleGetBrief, 
-  handleUpdateBrief 
+import {
+  handleAnalyzeReferenceVideo,
+  handleGetCuratedReferences,
+  handleGetBrief,
+  handleUpdateBrief
 } from './server/controllers/briefController';
-import { 
-  handleGetProject, 
-  handleTransitionPhase, 
-  handleAddDeliverable, 
-  handleAddTimestampComment, 
-  handleApproveAndReleaseEscrow 
+import {
+  handleGetProject,
+  handleTransitionPhase,
+  handleAddDeliverable,
+  handleAddTimestampComment,
+  handleApproveAndReleaseEscrow
 } from './server/controllers/projectController';
 import {
   handleAgentChat,
@@ -59,18 +59,32 @@ import {
 
 dotenv.config();
 
+import { mediaRouter } from './server/controllers/mediaController';
+import { enforceGenerationQuota } from './server/middleware/quota';
+import { adminDb, assetBucket, verifyBackendCredentials } from './server/lib/firebaseAdmin';
+import { sendMediaError } from './server/lib/media';
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
-const isDev = process.env.NODE_ENV !== 'production';
+const isDev = process.env.NODE_ENV === 'development';
+if (!isDev && (!process.env.GEMINI_API_KEY || !process.env.MEDIA_SIGNING_SECRET || process.env.MEDIA_SIGNING_SECRET.length < 32)) {
+  throw new Error('Production requires GEMINI_API_KEY and a MEDIA_SIGNING_SECRET of at least 32 characters.');
+}
+app.disable('x-powered-by');
+app.set('case sensitive routing', true);
+app.use((_req, res, next) => {
+  res.set({ 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer' });
+  next();
+});
 
 // Support raw body for webhook verification and JSON parsing for API requests (50mb for media)
 app.use(express.json({
-  limit: '50mb',
+  limit: '16mb',
   verify: (req: any, _res, buf) => {
     req.rawBody = buf;
   }
 }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.urlencoded({ limit: '16mb', extended: true }));
 
 // Initialize Firebase for server operations
 const fbApp = initializeApp(firebaseConfig);
@@ -80,8 +94,9 @@ const db = getFirestore(fbApp, firebaseConfig.firestoreDatabaseId);
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || '',
   httpOptions: {
+    timeout: 120_000,
     headers: {
-      'User-Agent': 'aistudio-build',
+      'User-Agent': 'onlycreation-server',
     }
   }
 });
@@ -165,13 +180,34 @@ app.get('/api/health', (_req: Request, res: Response) => {
     services: {
       aiGateway: Boolean(process.env.GEMINI_API_KEY),
       cashfree: cf.isConfigured,
-      cashfreeMerchantId: cf.appId ? cf.appId.slice(0, 10) + '...' : null,
+
       cashfreeEnv: cf.env,
       razorpay: Boolean(process.env.RAZORPAY_KEY_ID),
       stripe: Boolean(process.env.STRIPE_SECRET_KEY),
       database: firebaseConfig.projectId
     }
   });
+});
+
+// Fail closed for unfinished business workflows in every non-development environment.
+app.use('/api', (req, res, next) => {
+  if (!isDev && (/^\/(payments|wallet|bookings|projects|briefs|team)(\/|$)/.test(req.path.toLowerCase()) || /^\/agents\/(notifications)/.test(req.path.toLowerCase()))) {
+    return res.status(503).json({ error: 'This workflow is unavailable until durable storage and payment verification are implemented.' });
+  }
+  if (['/ready', '/ai/video-stream', '/ai/asset-stream'].includes(req.path)) return next(); // Short-lived signed asset capability.
+  return verifyAuthToken(req, res, next);
+});
+app.use('/api', enforceGenerationQuota);
+
+app.get('/api/ready', async (_req, res) => {
+  try {
+    await verifyBackendCredentials();
+    await adminDb().collection('readiness').doc('probe').get();
+    await assetBucket().getMetadata();
+    res.json({ status: 'ready' });
+  } catch {
+    res.status(503).json({ status: 'not_ready', error: 'Check Firebase credentials, database and storage permissions.' });
+  }
 });
 
 // ================= AI GATEWAY =================
@@ -188,11 +224,11 @@ app.post('/api/ai/generate', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Valid prompt string is required' });
   }
 
-  const brandContext = brand ? 
-    `For Brand: "${brand.name}" in the "${brand.industry}" industry. 
-     Target Audience: ${brand.targetAudience}. 
-     Tone: ${brand.tone}. 
-     Visual Vibe: ${brand.fontVibe || 'modern'}. 
+  const brandContext = brand ?
+    `For Brand: "${brand.name}" in the "${brand.industry}" industry.
+     Target Audience: ${brand.targetAudience}.
+     Tone: ${brand.tone}.
+     Visual Vibe: ${brand.fontVibe || 'modern'}.
      Primary Color: ${brand.primaryColor}.` : '';
 
   const stylePrompt = options?.style ? `Visual Style Direction: ${options.style}.` : '';
@@ -203,13 +239,13 @@ app.post('/api/ai/generate', async (req: Request, res: Response) => {
       model: 'gemini-3.8-flash',
       contents: `Act as an award-winning creative advertising director & executive producer. ${brandContext} ${stylePrompt} ${ratioPrompt}
       Generate a comprehensive, production-ready ad concept based on this user prompt: "${prompt}".
-      
+
       Provide:
       1. Compelling Ad Copy (headline, catchy body, hook, call to action)
       2. Visual prompt for image generation (photorealistic commercial cinematography, lighting setup, framing, color grading)
       3. A short-form video script with shot descriptions, camera movement, and audio cues
       4. A "Production Brief": High-end technical guide for photographers/videographers detailing lighting gear (key, fill, backlight, gels), recommended lenses (e.g., 35mm f/1.4, anamorphic), color grading palette, props, and audio design.
-      
+
       Format your response in a clean JSON structure.`,
       config: {
         responseMimeType: 'application/json',
@@ -231,18 +267,8 @@ app.post('/api/ai/generate', async (req: Request, res: Response) => {
       success: true,
       data: parsed
     });
-  } catch (error: any) {
-    console.error('AI Gateway Generation error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'AI generation failed',
-      fallback: {
-        copy: `Elevate your vision with ${brand?.name || 'OnlyCreation'}. Distinctive commercial storytelling engineered for modern brands.`,
-        visualPrompt: `${prompt}, commercial advertising cinematography, 8k resolution, Hasselblad lens, studio lighting`,
-        videoScript: `[0:00-0:05] Dynamic macro dolly in.\n[0:05-0:15] Brand hook and lifestyle narrative.\n[0:15-0:30] High-tempo call to action lockup.`,
-        productionBrief: `Lighting: 3-point daylight softboxes with subtle rim edge. Camera: 4K 60fps Sony FX3 / Arri Alexa. Sound: Deep atmospheric ambient synths.`
-      }
-    });
+  } catch (error) {
+    return sendMediaError(res, error);
   }
 });
 
@@ -289,7 +315,7 @@ ${brandContext}`;
 
   try {
     const contents: any[] = [];
-    
+
     // Add up to 10 previous conversation turns
     const recentHistory = conversationHistory.slice(-10);
     for (const item of recentHistory) {
@@ -324,13 +350,8 @@ ${brandContext}`;
       modelUsed: modelToUse,
       timestamp: new Date().toISOString()
     });
-  } catch (error: any) {
-    console.error('Creation AI Chat Error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Chat generation failed',
-      reply: `I received your creative brief for "${message.slice(0, 50)}...". Let's assemble the production plan:\n\n### 🎬 Creative Concept & Hook\n**Hook:** "Stop scrolling if you care about authentic craft."\n\n### 📐 Production Breakdown\n- **Format:** 9:16 Vertical Reel\n- **Visual Style:** 35mm Arri Alexa commercial look with soft volumetric key light\n- **Next Steps:** Launch the **AI Studio** to generate visual frames or have **Nova** draft a detailed shot-list.`
-    });
+  } catch (error) {
+    return sendMediaError(res, error);
   }
 });
 
@@ -418,52 +439,8 @@ Provide:
         status: 'draft_plan'
       }
     });
-  } catch (err: any) {
-    console.error('Ad plan generation error:', err);
-    return res.status(500).json({
-      success: false,
-      error: err.message || 'Ad plan generation failed',
-      plan: {
-        title: `${brandProfile?.name || 'Brand'} Commercial Sprint`,
-        brandName: brandProfile?.name || 'Brand',
-        targetAudience: brandProfile?.targetAudience || 'Modern Consumers',
-        durationSeconds: duration,
-        aspectRatio,
-        visualStyle: style,
-        coreHook: `Unlock the next standard of ${brandProfile?.industry || 'craft'}.`,
-        videoScript: `[0:00] Stop settling for average. [0:07] Designed for those who demand excellence. [0:15] Experience the difference today.`,
-        voicePersona: 'Deep, resonant, confident European narrator',
-        musicStyle: 'Minimalist electronic pulse with ambient orchestral swell',
-        viralityTip: 'Use a high-contrast opening frame with a 1-second silence before the beat drops.',
-        status: 'draft_plan',
-        scenes: [
-          {
-            sceneNumber: 1,
-            shotDescription: 'Extreme macro closeup of product texture with morning light glint',
-            cameraMovement: 'Slow linear push-in',
-            lighting: 'Single directional key light with gentle atmospheric haze',
-            voiceover: 'Stop settling for the expected.',
-            visualPrompt: `${prompt}, macro commercial product shot, 8k resolution, cinematic lighting, 35mm lens`
-          },
-          {
-            sceneNumber: 2,
-            shotDescription: 'Mid shot of creator engaging with product in contemporary minimal studio',
-            cameraMovement: 'Subtle parallax pan',
-            lighting: 'Diffused daylight softbox overhead',
-            voiceover: 'Precision engineering meets everyday luxury.',
-            visualPrompt: `${prompt}, editorial lifestyle studio portrait, natural tones, soft diffused illumination`
-          },
-          {
-            sceneNumber: 3,
-            shotDescription: 'Dynamic hero lockup on marble pedestal with clean typography overlay',
-            cameraMovement: 'Static hero framing with slow zoom out',
-            lighting: 'High-contrast studio rim light with deep violet shadows',
-            voiceover: 'Discover what is possible. Available now.',
-            visualPrompt: `${prompt}, hero product showcase on dark pedestal, studio commercial lighting, sleek reflection`
-          }
-        ]
-      }
-    });
+  } catch (error) {
+    return sendMediaError(res, error);
   }
 });
 
@@ -508,12 +485,8 @@ app.post('/api/creation-ai/delegate-agent', async (req: Request, res: Response) 
         completedAt: new Date().toISOString()
       }
     });
-  } catch (err: any) {
-    console.error('Agent delegation error:', err);
-    return res.status(500).json({
-      success: false,
-      error: err.message || 'Agent delegation failed'
-    });
+  } catch (error) {
+    return sendMediaError(res, error);
   }
 });
 
@@ -561,22 +534,10 @@ Format with clean markdown headings and bullet points.`,
     return res.json({
       success: true,
       reply,
-      sources,
-      metrics: {
-        viralityScore: 98,
-        estimatedReach: '85,000 - 200,000 impressions'
-      }
+      sources
     });
-  } catch (error: any) {
-    console.error('Ketan Google Search Grounding error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Grounding request failed',
-      reply: `### 🔥 Grounded Ad Strategy from Ketan (Google AI Powered)\n\nBased on search index trends for ${brandProfile?.name || 'your brand'}:\n\n1. **The Contrast Cut:** "Stop buying cameras until you learn this 3-point lighting setup."\n2. **Curiosity Pattern Interrupt:** "Why 84% of boutique brands switched from standard studio shoots to high-contrast cinematic reels."\n3. **Proof Stack:** "Tested across 25,000 impressions: The 15-second format outperforming traditional commercials by 3.8x."`,
-      sources: [
-        { title: 'Google Trends Live Index', uri: 'https://trends.google.com' }
-      ]
-    });
+  } catch (error) {
+    return sendMediaError(res, error);
   }
 });
 
@@ -598,7 +559,7 @@ app.post('/api/ai/analyze-health', async (req: Request, res: Response) => {
       - Current Stage: "${stage}"
       - Milestones: ${milestonesCompleted}/${milestonesTotal} completed
       - Deliverables Uploaded: ${deliverablesTotal}
-      
+
       Evaluate delivery risk, operational bottlenecks, and give 2 clear insights and 2 actionable recommendations.
       Format response as JSON.`,
       config: {
@@ -618,451 +579,14 @@ app.post('/api/ai/analyze-health', async (req: Request, res: Response) => {
 
     const parsed = JSON.parse(response.text || '{}');
     return res.json({ success: true, data: parsed });
-  } catch (error: any) {
-    console.warn('AI Project Health analysis fallback:', error);
-    const ratio = milestonesTotal > 0 ? (milestonesCompleted / milestonesTotal) : 0.8;
-    const score = Math.min(98, Math.round(ratio * 40 + 55));
-    return res.json({
-      success: true,
-      data: {
-        healthScore: score,
-        riskLevel: score > 75 ? 'low' : score > 50 ? 'medium' : 'high',
-        insights: [
-          `Active pipeline in ${String(stage || 'production').replace('_', ' ')} phase.`,
-          `${milestonesCompleted} of ${milestonesTotal} milestones cleared.`
-        ],
-        recommendations: [
-          'Verify equipment readiness with assigned studio or creator crew.',
-          'Review raw draft cuts before final color master export.'
-        ]
-      }
-    });
+  } catch (error) {
+    return sendMediaError(res, error);
   }
 });
 
 // ================= GEMINI PRODUCTION MEDIA & INTELLIGENCE SUITE =================
 
-// 1. Create Images (gemini-3.1-flash-image-preview)
-app.post('/api/ai/image-generate', async (req: Request, res: Response) => {
-  const { prompt, aspectRatio = '1:1', imageSize = '1K', uid } = req.body;
-  const userId = uid || req.ip || 'anonymous_user';
-
-  const rateCheck = checkRateLimit(userId, 20, 100);
-  if (!rateCheck.allowed) {
-    return res.status(429).json({ error: rateCheck.reason });
-  }
-
-  if (!prompt || typeof prompt !== 'string') {
-    return res.status(400).json({ error: 'Prompt is required' });
-  }
-
-  try {
-    const validRatios = ['1:1', '3:4', '4:3', '9:16', '16:9'];
-    const selectedRatio = validRatios.includes(aspectRatio) ? aspectRatio : '1:1';
-
-    const requestedModel = req.body.model === 'gemini-3.1-flash-lite-image' 
-      ? 'gemini-3.1-flash-lite-image' 
-      : 'gemini-nano-banana-2.1';
-
-    let response: any = null;
-    let modelUsed = requestedModel;
-
-    if (requestedModel === 'gemini-nano-banana-2.1') {
-      try {
-        response = await ai.models.generateContent({
-          model: 'gemini-nano-banana-2.1',
-          contents: {
-            parts: [{ text: prompt }]
-          },
-          config: {
-            imageConfig: {
-              aspectRatio: selectedRatio,
-              imageSize: imageSize === '2K' ? '2K' : '1K'
-            }
-          }
-        });
-      } catch (e1: any) {
-        console.warn('Falling back from gemini-nano-banana-2.1 to gemini-3.1-flash-lite-image:', e1?.message);
-        modelUsed = 'gemini-3.1-flash-lite-image';
-        response = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite-image',
-          contents: {
-            parts: [{ text: prompt }]
-          },
-          config: {
-            imageConfig: {
-              aspectRatio: selectedRatio
-            }
-          }
-        });
-      }
-    } else {
-      try {
-        response = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite-image',
-          contents: {
-            parts: [{ text: prompt }]
-          },
-          config: {
-            imageConfig: {
-              aspectRatio: selectedRatio
-            }
-          }
-        });
-      } catch (e1: any) {
-        console.warn('Falling back from gemini-3.1-flash-lite-image to gemini-nano-banana-2.1:', e1?.message);
-        modelUsed = 'gemini-nano-banana-2.1';
-        response = await ai.models.generateContent({
-          model: 'gemini-nano-banana-2.1',
-          contents: {
-            parts: [{ text: prompt }]
-          },
-          config: {
-            imageConfig: {
-              aspectRatio: selectedRatio,
-              imageSize: imageSize === '2K' ? '2K' : '1K'
-            }
-          }
-        });
-      }
-    }
-
-    let imageUrl: string | null = null;
-    let caption: string = '';
-
-    for (const part of response?.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-      } else if (part.text) {
-        caption += part.text;
-      }
-    }
-
-    if (!imageUrl) {
-      throw new Error('No image binary returned in model candidates');
-    }
-
-    return res.json({
-      success: true,
-      imageUrl,
-      caption: caption.trim() || prompt,
-      modelUsed,
-      aspectRatio: selectedRatio
-    });
-  } catch (error: any) {
-    console.warn('Gemini image generation fallback with strict prompt fidelity:', error?.message || error);
-    // Strict prompt-faithful fallback: do not use randomizer or prompt-hallucination enhancers
-    const widthMap: Record<string, number> = { '1:1': 1024, '9:16': 720, '16:9': 1280, '4:3': 1024, '3:4': 768 };
-    const heightMap: Record<string, number> = { '1:1': 1024, '9:16': 1280, '16:9': 720, '4:3': 768, '3:4': 1024 };
-    const w = widthMap[aspectRatio] || 1024;
-    const h = heightMap[aspectRatio] || 1024;
-
-    // Use a deterministic seed bound strictly to the prompt text so results are reproducible and not randomized
-    const promptHash = Array.from(prompt).reduce((acc: number, char: string) => ((acc << 5) - acc + char.charCodeAt(0)) | 0, 0);
-    const deterministicSeed = Math.abs(promptHash) % 999999;
-
-    const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
-      `?width=${w}&height=${h}&seed=${deterministicSeed}&nologo=true`;
-
-    return res.json({
-      success: true,
-      imageUrl: fallbackUrl,
-      caption: prompt,
-      modelUsed: 'gemini-3.1-flash-lite-image',
-      aspectRatio
-    });
-  }
-});
-
-// 2. Edit Images (gemini-3.1-flash-image-preview)
-app.post('/api/ai/image-edit', async (req: Request, res: Response) => {
-  const { prompt, image, aspectRatio = '1:1', uid } = req.body;
-  const userId = uid || req.ip || 'anonymous_user';
-
-  const rateCheck = checkRateLimit(userId, 20, 100);
-  if (!rateCheck.allowed) {
-    return res.status(429).json({ error: rateCheck.reason });
-  }
-
-  if (!prompt || typeof prompt !== 'string') {
-    return res.status(400).json({ error: 'Edit prompt is required' });
-  }
-
-  if (!image || !image.data) {
-    return res.status(400).json({ error: 'Source image data (base64) is required for editing' });
-  }
-
-  try {
-    const cleanBase64 = image.data.replace(/^data:[^;]+;base64,/, '');
-    const mimeType = image.mimeType || 'image/png';
-
-    let response: any = null;
-    let modelUsed = 'gemini-3.1-flash-lite-image';
-
-    try {
-      response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite-image',
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                data: cleanBase64,
-                mimeType
-              }
-            },
-            {
-              text: prompt
-            }
-          ]
-        },
-        config: {
-          imageConfig: {
-            aspectRatio: aspectRatio === '9:16' ? '9:16' : aspectRatio === '16:9' ? '16:9' : '1:1'
-          }
-        }
-      });
-    } catch (e1: any) {
-      console.warn('Retrying image edit with gemini-nano-banana-2.1:', e1?.message);
-      modelUsed = 'gemini-nano-banana-2.1';
-      response = await ai.models.generateContent({
-        model: 'gemini-nano-banana-2.1',
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                data: cleanBase64,
-                mimeType
-              }
-            },
-            {
-              text: prompt
-            }
-          ]
-        }
-      });
-    }
-
-    let imageUrl: string | null = null;
-    let caption: string = '';
-
-    for (const part of response?.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-      } else if (part.text) {
-        caption += part.text;
-      }
-    }
-
-    if (!imageUrl) {
-      throw new Error('No edited image returned');
-    }
-
-    return res.json({
-      success: true,
-      imageUrl,
-      caption: caption.trim() || prompt,
-      modelUsed
-    });
-  } catch (error: any) {
-    console.warn('Gemini image edit fallback:', error?.message || error);
-    // Strict prompt-faithful fallback with deterministic seed
-    const promptHash = Array.from(prompt).reduce((acc: number, char: string) => ((acc << 5) - acc + char.charCodeAt(0)) | 0, 0);
-    const deterministicSeed = Math.abs(promptHash) % 999999;
-    const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
-      `?width=1024&height=1024&seed=${deterministicSeed}&nologo=true`;
-
-    return res.json({
-      success: true,
-      imageUrl: fallbackUrl,
-      caption: prompt,
-      modelUsed: 'gemini-3.1-flash-lite-image'
-    });
-  }
-});
-
-// 3. Generate Video & Animate Image into Video with Veo (veo-3.1-fast-generate-preview)
-app.post('/api/ai/video-generate', async (req: Request, res: Response) => {
-  const { prompt, image, aspectRatio = '16:9', resolution = '720p', uid } = req.body;
-  const userId = uid || req.ip || 'anonymous_user';
-
-  const rateCheck = checkRateLimit(userId, 10, 50);
-  if (!rateCheck.allowed) {
-    return res.status(429).json({ error: rateCheck.reason });
-  }
-
-  if (!prompt && !image) {
-    return res.status(400).json({ error: 'Prompt or image is required for video generation' });
-  }
-
-  const cleanRatio = aspectRatio === '9:16' ? '9:16' : '16:9';
-  const cleanRes = resolution === '1080p' ? '1080p' : '720p';
-
-  try {
-    let operation: any = null;
-    const modelTarget = 'veo-3.1-lite-generate-preview';
-
-    const generatePayload: any = {
-      model: modelTarget,
-      prompt: prompt || 'Cinematic commercial sequence with smooth camera movement and realistic studio lighting',
-      config: {
-        numberOfVideos: 1,
-        resolution: cleanRes,
-        aspectRatio: cleanRatio
-      }
-    };
-
-    if (image && image.data) {
-      const cleanBase64 = image.data.replace(/^data:[^;]+;base64,/, '');
-      generatePayload.image = {
-        imageBytes: cleanBase64,
-        mimeType: image.mimeType || 'image/png'
-      };
-    }
-
-    try {
-      operation = await ai.models.generateVideos(generatePayload);
-    } catch (e1: any) {
-      console.warn('Retrying with veo-3.1-generate-preview:', e1?.message);
-      generatePayload.model = 'veo-3.1-generate-preview';
-      operation = await ai.models.generateVideos(generatePayload);
-    }
-
-    return res.json({
-      success: true,
-      operationName: operation.name,
-      model: generatePayload.model,
-      aspectRatio: cleanRatio,
-      resolution: cleanRes
-    });
-  } catch (error: any) {
-    console.error('Veo video generation initiation error:', error);
-    // Store simulated reference with exact user prompt attached
-    const simOpName = `models/veo-3.1-lite-generate-preview/operations/sim_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-    return res.json({
-      success: true,
-      operationName: simOpName,
-      model: 'veo-3.1-lite-generate-preview',
-      aspectRatio: cleanRatio,
-      isSimulated: true,
-      prompt
-    });
-  }
-});
-
-// Video Status Polling
-app.post('/api/ai/video-status', async (req: Request, res: Response) => {
-  const { operationName } = req.body;
-  if (!operationName) return res.status(400).json({ error: 'operationName required' });
-
-  // Handle simulated / fallback operations gracefully
-  if (operationName.includes('sim_')) {
-    const timestampStr = operationName.split('_')[1];
-    const elapsed = Date.now() - Number(timestampStr || Date.now());
-    const done = elapsed > 6000;
-    return res.json({
-      done,
-      status: done ? 'COMPLETED' : 'RENDERING_FRAMES',
-      progress: Math.min(100, Math.round((elapsed / 6000) * 100))
-    });
-  }
-
-  try {
-    const op = new GenerateVideosOperation();
-    op.name = operationName;
-    const updated = await ai.operations.getVideosOperation({ operation: op });
-
-    return res.json({
-      done: Boolean(updated.done),
-      error: updated.error || null,
-      status: updated.done ? (updated.error ? 'FAILED' : 'COMPLETED') : 'PROCESSING'
-    });
-  } catch (error: any) {
-    console.warn('Video status check error:', error);
-    return res.json({ done: true, status: 'READY' });
-  }
-});
-
-// ================= VIDEO DOWNLOAD & STREAMING PROXY =================
-const RELIABLE_FALLBACK_VIDEO = 'https://vjs.zencdn.net/v/oceans.mp4';
-
-// 1. GET /api/ai/video-stream - Direct MP4 stream proxy for <video> player and downloads
-app.get('/api/ai/video-stream', async (req: Request, res: Response) => {
-  const operationName = (req.query.op as string) || '';
-
-  const streamFallback = async () => {
-    try {
-      const demoRes = await fetch(RELIABLE_FALLBACK_VIDEO);
-      res.setHeader('Content-Type', 'video/mp4');
-      res.setHeader('Content-Disposition', 'inline; filename="onlycreation_veo_reel.mp4"');
-      res.setHeader('Accept-Ranges', 'bytes');
-      if (demoRes.headers.get('content-length')) {
-        res.setHeader('Content-Length', demoRes.headers.get('content-length')!);
-      }
-      if (demoRes.body) {
-        Readable.fromWeb(demoRes.body as any).pipe(res);
-      } else {
-        res.redirect(RELIABLE_FALLBACK_VIDEO);
-      }
-    } catch (e) {
-      console.error('Fallback video stream error:', e);
-      res.redirect(RELIABLE_FALLBACK_VIDEO);
-    }
-  };
-
-  // If simulated operation or missing name, stream reliable demo MP4
-  if (!operationName || operationName.includes('sim_')) {
-    return streamFallback();
-  }
-
-  try {
-    const op = new GenerateVideosOperation();
-    op.name = operationName;
-    const updated = await ai.operations.getVideosOperation({ operation: op });
-    const uri = updated.response?.generatedVideos?.[0]?.video?.uri;
-
-    if (!uri) {
-      return streamFallback();
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY || '';
-    const authenticatedUri = uri.includes('?') ? `${uri}&key=${apiKey}` : `${uri}?key=${apiKey}`;
-
-    const videoRes = await fetch(authenticatedUri, {
-      headers: {
-        'x-goog-api-key': apiKey
-      }
-    });
-
-    if (!videoRes.ok || !videoRes.body) {
-      console.warn(`Veo video fetch returned ${videoRes.status}, falling back to verified stream`);
-      return streamFallback();
-    }
-
-    res.setHeader('Content-Type', videoRes.headers.get('content-type') || 'video/mp4');
-    res.setHeader('Content-Disposition', 'inline; filename="onlycreation_veo_reel.mp4"');
-    res.setHeader('Accept-Ranges', 'bytes');
-    if (videoRes.headers.get('content-length')) {
-      res.setHeader('Content-Length', videoRes.headers.get('content-length')!);
-    }
-
-    Readable.fromWeb(videoRes.body as any).pipe(res);
-  } catch (err: any) {
-    console.error('Veo video stream proxy error:', err);
-    return streamFallback();
-  }
-});
-
-// 2. POST /api/ai/video-download - Returns accessible video stream URL
-app.post('/api/ai/video-download', async (req: Request, res: Response) => {
-  const { operationName } = req.body;
-  const op = operationName || 'default_reel';
-  const streamUrl = `/api/ai/video-stream?op=${encodeURIComponent(op)}`;
-
-  return res.json({
-    videoUrl: streamUrl,
-    downloadType: 'stream_proxy'
-  });
-});
+app.use('/api/ai', mediaRouter(ai));
 
 // 4. Google Search Grounding (gemini-3.5-flash with googleSearch)
 app.post('/api/ai/search-grounding', async (req: Request, res: Response) => {
@@ -1077,7 +601,7 @@ app.post('/api/ai/search-grounding', async (req: Request, res: Response) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.8-flash',
       contents: userQuery,
       config: {
         tools: [{ googleSearch: {} }]
@@ -1098,18 +622,10 @@ app.post('/api/ai/search-grounding', async (req: Request, res: Response) => {
       success: true,
       answer: text,
       sources,
-      modelUsed: 'gemini-3.5-flash'
+      modelUsed: 'gemini-3.8-flash'
     });
-  } catch (error: any) {
-    console.error('Search grounding error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Search grounding failed',
-      fallbackAnswer: `Market intelligence search for "${userQuery}": Top trending creative production benchmarks prioritize high-contrast 35mm visuals, authentic behind-the-scenes narrative hooks, and creator-led micro-commercials.`,
-      sources: [
-        { title: 'Google Search Live Index', uri: 'https://www.google.com/search?q=' + encodeURIComponent(userQuery) }
-      ]
-    });
+  } catch (error) {
+    return sendMediaError(res, error);
   }
 });
 
@@ -1140,7 +656,7 @@ app.post('/api/ai/maps-grounding', async (req: Request, res: Response) => {
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.8-flash',
       contents: query,
       config
     });
@@ -1159,18 +675,10 @@ app.post('/api/ai/maps-grounding', async (req: Request, res: Response) => {
       success: true,
       answer: text,
       places,
-      modelUsed: 'gemini-3.5-flash'
+      modelUsed: 'gemini-3.8-flash'
     });
-  } catch (error: any) {
-    console.error('Maps grounding error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Maps grounding failed',
-      fallbackAnswer: `Location recommendations for "${query}": Verified production studios and scenic filming locations mapped across key metropolitan creator hubs.`,
-      places: [
-        { title: 'Google Maps Studio Directory', uri: 'https://www.google.com/maps/search/' + encodeURIComponent(query) }
-      ]
-    });
+  } catch (error) {
+    return sendMediaError(res, error);
   }
 });
 
@@ -1190,7 +698,7 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
   // - gemini-3.1-pro-preview for particularly complex tasks
   // - gemini-3.5-flash for general tasks
   // - gemini-3.1-flash-lite for tasks that should happen fast
-  let modelName = 'gemini-3.5-flash';
+  let modelName = 'gemini-3.8-flash';
   if (modelTier === 'complex' || modelTier === 'pro') {
     modelName = 'gemini-3.1-pro-preview';
   } else if (modelTier === 'fast' || modelTier === 'lite') {
@@ -1224,34 +732,8 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
       role: 'model',
       modelUsed: modelName
     });
-  } catch (error: any) {
-    console.error('Chat generation error with', modelName, error);
-    // Graceful fallback to gemini-3.8-flash if model tiered key requires upgrade
-    try {
-      const fallbackContents = messages.map(m => ({
-        role: m.role === 'model' || m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.text || m.content || '' }]
-      }));
-      const fallbackRes = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: fallbackContents,
-        config: {
-          systemInstruction: systemInstruction || defaultSystemInstruction
-        }
-      });
-      return res.json({
-        success: true,
-        reply: fallbackRes.text || '',
-        role: 'model',
-        modelUsed: 'gemini-3.8-flash'
-      });
-    } catch (e2: any) {
-      return res.status(500).json({
-        success: false,
-        error: error.message || 'Chat generation failed',
-        reply: "I'm ready to help you direct your next commercial or breakdown your production shot list! What vision are we producing today?"
-      });
-    }
+  } catch (error) {
+    return sendMediaError(res, error);
   }
 });
 
@@ -1294,13 +776,8 @@ app.post('/api/ai/transcribe', async (req: Request, res: Response) => {
       transcription,
       modelUsed: 'gemini-3.5-transcribe'
     });
-  } catch (error: any) {
-    console.error('Audio transcription error:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Audio transcription failed',
-      transcription: '[00:00 - 00:15] Lead Creator: "OnlyCreation is ready on set for our commercial campaign take one."\n[00:15 - 00:30] Director: "Action! Camera dolly in on product."\n\n(Transcript rendered via production speech processor).'
-    });
+  } catch (error) {
+    return sendMediaError(res, error);
   }
 });
 
@@ -1356,6 +833,7 @@ app.post('/api/ai/generate-music', async (req: Request, res: Response) => {
       }
     }
 
+    if (!audioBase64) throw new Error('No generated audio returned');
     return res.json({
       success: true,
       audioBase64,
@@ -1364,17 +842,8 @@ app.post('/api/ai/generate-music', async (req: Request, res: Response) => {
       modelUsed: modelName,
       prompt
     });
-  } catch (error: any) {
-    console.warn('Lyria music generation fallback:', error);
-    // Provide an immediate playable sample track fallback
-    return res.json({
-      success: true,
-      audioUrl: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3',
-      lyrics: `[Intro: Ambient Neo-Soul Synths]\n"Creating timeless stories with OnlyCreation, every frame a memory."`,
-      modelUsed: modelName,
-      fallbackUsed: true,
-      prompt
-    });
+  } catch (error) {
+    return sendMediaError(res, error);
   }
 });
 
@@ -1659,15 +1128,15 @@ app.post('/api/payments/cashfree/create-order', async (req: Request, res: Respon
 
 // 2. Verify Payment & Record in Firestore + Double-Entry Ledger
 app.post('/api/payments/verify', async (req: Request, res: Response) => {
-  const { 
-    orderId, 
-    paymentId: clientPaymentId, 
-    signature, 
-    amount, 
-    currency = 'INR', 
-    method = 'UPI', 
-    itemType, 
-    uid, 
+  const {
+    orderId,
+    paymentId: clientPaymentId,
+    signature,
+    amount,
+    currency = 'INR',
+    method = 'UPI',
+    itemType,
+    uid,
     itemId,
     signatureToken,
     provider = 'cashfree'
@@ -1832,8 +1301,8 @@ app.post('/api/payments/cashfree/webhook', async (req: Request, res: Response) =
           currency: 'INR',
           type: 'deposit',
           relatedOrderId: orderId,
-          metadata: { 
-            webhookEvent: type, 
+          metadata: {
+            webhookEvent: type,
             cfPaymentId: paymentData.cf_payment_id || orderData.cf_order_id,
             gateway: 'cashfree'
           }
@@ -2163,10 +1632,10 @@ app.post('/api/wallet/pay-from-wallet', async (req: Request, res: Response) => {
   }
 
   try {
-    const ledgerType = itemType === 'studio_booking' 
-      ? 'booking_payment' 
-      : itemType === 'creator_dispatch' 
-      ? 'dispatch_payment' 
+    const ledgerType = itemType === 'studio_booking'
+      ? 'booking_payment'
+      : itemType === 'creator_dispatch'
+      ? 'dispatch_payment'
       : 'booking_payment';
 
     const orderId = `wallet_ord_${Date.now()}`;
@@ -2307,6 +1776,12 @@ app.get('/api/team/messages', optionalAuthToken, handleGetTeamMessages);
 app.post('/api/team/messages', optionalAuthToken, handleSendTeamMessage);
 
 // ================= VITE DEV / STATIC SERVING & LIVE WEBSOCKET =================
+app.use((error: any, _req: Request, res: Response, _next: any) => {
+  res.status(error.status === 413 ? 413 : 400).json({ error: error.status === 413 ? 'Request exceeds 16 MB.' : 'Invalid request body.' });
+});
+
+app.use('/api', (_req, res) => res.status(404).json({ error: 'API endpoint not found' }));
+
 async function startServer() {
   if (isDev) {
     const { createServer: createViteServer } = await import('vite');
@@ -2326,7 +1801,7 @@ async function startServer() {
   const server = http.createServer(app);
 
   // Initialize Live Voice WebSocket Server for gemini-3.8-live
-  const wss = new WebSocketServer({ server, path: '/api/live-voice' });
+  const wss = new WebSocketServer({ server, path: '/api/live-voice', verifyClient: (_info, done) => done(false, 503, 'Live voice is unavailable until authenticated sessions are implemented') });
 
   wss.on('connection', async (clientWs: WebSocket) => {
     console.log('[Live Voice] Client connected to Gemini 3.8 Live session');
@@ -2365,9 +1840,9 @@ async function startServer() {
     } catch (err: any) {
       console.warn('[Live Voice] Connection warning:', err?.message);
       if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.send(JSON.stringify({ 
-          status: 'ready_simulated',
-          message: 'Voice Director Room active. Speak into your microphone.' 
+        clientWs.send(JSON.stringify({
+          status: 'error',
+          message: 'Voice generation unavailable.'
         }));
       }
     }

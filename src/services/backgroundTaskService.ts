@@ -1,3 +1,7 @@
+import { auth } from '../lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { geminiService } from './geminiService';
+import { apiFetch } from './apiClient';
 export interface BackgroundTask {
   id: string;
   type: 'video_generation' | 'image_batch' | 'agent_delegation' | 'audio_processing';
@@ -11,6 +15,7 @@ export interface BackgroundTask {
   error?: string;
   createdAt: string;
   completedAt?: string;
+  ownerId?: string;
   metadata?: Record<string, any>;
 }
 
@@ -20,10 +25,29 @@ class BackgroundTaskManager {
   private tasks: Map<string, BackgroundTask> = new Map();
   private listeners: Set<TaskListener> = new Set();
   private pollInterval: any = null;
+  private polling = false;
 
   constructor() {
     this.loadFromStorage();
     this.startPolling();
+    onAuthStateChanged(auth, async user => {
+      this.notify();
+      if (!user) return;
+      try {
+        const response = await apiFetch('/api/ai/jobs');
+        if (!response.ok) return;
+        const { jobs } = await response.json();
+        for (const job of jobs.filter((j: any) => j.type === 'video')) {
+          this.tasks.set(`video_${job.id}`, {
+            id: `video_${job.id}`, ownerId: user.uid, scope: 'studio', type: 'video_generation',
+            title: job.prompt?.slice(0, 40) || 'Veo video', operationName: job.id,
+            status: job.status === 'COMPLETED' ? 'COMPLETED' : job.status === 'FAILED' ? 'FAILED' : 'RUNNING',
+            resultUrl: job.assetUrl, error: job.error, createdAt: new Date(job.createdAt).toISOString()
+          });
+        }
+        this.notify();
+      } catch { /* Retry when the user signs in or checks the library again. */ }
+    });
   }
 
   private loadFromStorage() {
@@ -62,7 +86,8 @@ class BackgroundTaskManager {
   }
 
   public getAllTasks(): BackgroundTask[] {
-    return Array.from(this.tasks.values()).sort(
+    if (!auth.currentUser) return [];
+    return Array.from(this.tasks.values()).filter(t => t.ownerId === auth.currentUser?.uid).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }
@@ -80,13 +105,15 @@ class BackgroundTaskManager {
   }
 
   public getTask(id: string): BackgroundTask | undefined {
-    return this.tasks.get(id);
+    const task = this.tasks.get(id);
+    return auth.currentUser && task?.ownerId === auth.currentUser.uid ? task : undefined;
   }
 
   public addTask(task: Omit<BackgroundTask, 'createdAt'>): BackgroundTask {
     const scope = task.scope || (task.type === 'agent_delegation' ? 'agents' : 'studio');
     const fullTask: BackgroundTask = {
       ...task,
+      ownerId: auth.currentUser?.uid,
       scope,
       createdAt: new Date().toISOString()
     };
@@ -96,7 +123,7 @@ class BackgroundTaskManager {
   }
 
   public updateTask(id: string, updates: Partial<BackgroundTask>) {
-    const existing = this.tasks.get(id);
+    const existing = this.getTask(id);
     if (!existing) return;
 
     const updated: BackgroundTask = {
@@ -108,14 +135,15 @@ class BackgroundTaskManager {
   }
 
   public removeTask(id: string) {
-    if (this.tasks.has(id)) {
+    if (this.getTask(id)) {
       this.tasks.delete(id);
       this.notify();
     }
   }
 
   public clearCompleted() {
-    for (const [id, task] of this.tasks.entries()) {
+    for (const task of this.getAllTasks()) {
+      const id = task.id;
       if (task.status === 'COMPLETED' || task.status === 'FAILED') {
         this.tasks.delete(id);
       }
@@ -127,61 +155,32 @@ class BackgroundTaskManager {
     if (this.pollInterval) clearInterval(this.pollInterval);
 
     this.pollInterval = setInterval(async () => {
-      const runningTasks = Array.from(this.tasks.values()).filter(t => t.status === 'RUNNING');
-      if (runningTasks.length === 0) return;
-
-      for (const task of runningTasks) {
-        if (task.type === 'video_generation' && task.operationName) {
+      if (this.polling || !auth.currentUser) return;
+      this.polling = true;
+      try {
+        for (const task of this.getAllTasks().filter(t => t.status === 'RUNNING' && t.type === 'video_generation' && t.operationName)) {
           await this.pollVideoTask(task);
         }
-      }
-    }, 3500);
+      } finally { this.polling = false; }
+    }, 10_000);
   }
 
   private async pollVideoTask(task: BackgroundTask) {
     try {
-      const res = await fetch('/api/ai/video-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operationName: task.operationName })
-      });
-
-      if (!res.ok) return;
-      const data = await res.json();
-
+      if (Date.now() - new Date(task.createdAt).getTime() > 30 * 60 * 1000) throw new Error('Video job timed out. Contact support before retrying.');
+      const data = await geminiService.checkVideoStatus(task.operationName!);
+      if (data.error || data.status === 'FAILED') { this.updateTask(task.id, { status: 'FAILED', error: data.error || 'Video generation failed.' }); return; }
       if (data.done) {
-        // Fetch download stream URL
-        let videoUrl = data.videoUrl;
-        if (!videoUrl) {
-          try {
-            const dlRes = await fetch('/api/ai/video-download', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ operationName: task.operationName })
-            });
-            const dlData = await dlRes.json();
-            videoUrl = dlData.videoUrl || `/api/ai/video-stream?op=${encodeURIComponent(task.operationName || '')}`;
-          } catch {
-            videoUrl = `/api/ai/video-stream?op=${encodeURIComponent(task.operationName || '')}`;
-          }
-        }
-
-        this.updateTask(task.id, {
-          status: 'COMPLETED',
-          progress: 100,
-          resultUrl: videoUrl,
-          completedAt: new Date().toISOString()
-        });
-      } else {
-        // Advance incremental progress indicator
-        const currentProgress = task.progress || 15;
-        const nextProgress = Math.min(94, currentProgress + 10);
-        this.updateTask(task.id, { progress: nextProgress });
+        const videoUrl = await geminiService.downloadVideo(task.operationName!);
+        this.updateTask(task.id, { status: 'COMPLETED', progress: 100, resultUrl: videoUrl, completedAt: new Date().toISOString() });
       }
-    } catch (e) {
-      console.warn(`Error polling background video task ${task.id}:`, e);
+    } catch (error: any) {
+      if (Date.now() - new Date(task.createdAt).getTime() > 30 * 60 * 1000) this.updateTask(task.id, { status: 'FAILED', error: error.message });
+      // Transient network/provider failures do not falsely complete or fail the job.
+      console.warn('Video status temporarily unavailable');
     }
   }
+
 }
 
 export const backgroundTaskService = new BackgroundTaskManager();

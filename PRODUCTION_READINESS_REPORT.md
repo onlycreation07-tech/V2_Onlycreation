@@ -1,141 +1,80 @@
-# ONLYCREATION — PRODUCTION READINESS & CTO AUDIT REPORT
+# V2 OnlyCreation production readiness review
 
-**Date:** September 2026  
-**Auditor:** CTO, Principal Architect, Security Engineer & QA Lead  
-**Repository:** `https://github.com/onlycreation07-tech/onlycreation_master.git`  
-**Firebase Database:** `ai-studio-2e538c4f-eb30-4395-a7be-51e27a1946f1`
+Reviewed 10 October 2026. Repository: onlycreation07-tech/V2_Onlycreation.
+Original revision: bdc8a43e9cb6e50b28ff1a15fb70fed592f89ce6.
 
----
+## Verdict
 
-## Executive Summary
+The original application is a prototype, not a production financial or autonomous-agent system. Its build passes, but critical security boundaries and output authenticity fail. This branch supplies a hardened AI-generation foundation and deployment packaging. It is **not certification that every existing workflow is production-ready**. Real provider, Firebase rules, cloud storage, browser and hosting checks still require the owner's environment.
 
-OnlyCreation began as a rapid prototype created in Google AI Studio, boasting a compelling visual design, responsive layouts, and rich creative workflows. However, under the hood, key business functions previously relied on client-side state, simulations (`setTimeout`), unverified client inputs, and email-based admin checks.
+## Why image and video results do not match expectations
 
-Per the CTO directive, we conducted a full architectural audit (Phase 0), identified all P0/P1/P2 issues, froze the UI/design language, and completed **Phase 1: Real Firebase Authentication & Server-Authoritative Admin Security**.
+| Original code | Actual behavior | Consequence |
+| --- | --- | --- |
+| server.ts, image-generate catch, original lines 753–773 | Returns a Pollinations image URL with success=true and a Gemini model name. | A Google failure looks like a successful Nano Banana generation. |
+| server.ts, image-edit, original lines 797–881 | Starts with Lite irrespective of UI selection; fallback generates a fresh image from text without the source image. | Product, face and composition consistency disappear. |
+| server.ts, video-generate, original lines 903–948 | Uses Veo Lite despite a Fast label; retries another model; invents a simulated operation on failure. | Model quality and cost differ from what the UI promises. |
+| server.ts, video-status, original lines 957–983 | Treats simulated jobs and polling failures as ready. | Errors become fake completion. |
+| server.ts, video-stream, original lines 989–1052 | Returns oceans.mp4 whenever actual video retrieval fails. | The downloaded file is stock footage unrelated to the prompt. |
+| VeoVideoStudio.tsx and backgroundTaskService.ts | Two independent pollers; one never stops retrying; both mishandle failure. | Endless spinners, duplicate downloads and false completion. |
+| ImageStudio.tsx / VeoVideoStudio.tsx | Declares every uploaded image PNG, including JPEG; fabricates 4K/60fps progress statements. | Invalid provider inputs and misleading quality claims. |
 
----
+The current Google documentation lists Nano Banana 2.1, Lite, and Veo 3.1 Quality/Fast/Lite. The names alone are not proof of an error. The account's paid API access, exact API model, input references, prompt and settings determine actual results. A Google consumer subscription is not evidence that this server's API project has billing/model access. No provider request was made during this review because no real server API credential was provided.
 
-## 1. Full Repository Audit Findings (Phase 0)
+Sources: https://ai.google.dev/gemini-api/docs/image-generation ; https://ai.google.dev/gemini-api/docs/generate-content/image-generation ; https://ai.google.dev/gemini-api/docs/veo?hl=en .
 
-### P0 Security Issues
-- **Client-Controlled Admin Checks**: Firestore rules previously checked `request.auth.token.email == 'onlycreation07@gmail.com'` directly in rule conditions, and frontend code attempted to write directly to `/admins/` upon matching email.
-- **Fast Auth / LocalStorage Identity Bypass**: The app previously allowed users to click "1-Click Fast Auth" which generated fake UIDs (`fast_${Date.now()}`) and stored them in `localStorage`, bypassing authoritative Firebase authentication.
-- **Client-Authoritative Roles**: Users were able to assign themselves arbitrary roles directly on the client during fast auth without server-side validation.
-- **Direct Client-Side AI API Access**: Frontend code bundle attempted direct communication with Gemini using environment variables without server rate-limiting or quota tracking.
+## Other launch blockers found
 
-### P0 Financial & Ledger Issues
-- **Simulated Payment Gateway**: `paymentService.ts` resolved transactions with a 1.2s `setTimeout()` simulation and client-generated payment IDs without backend signature verification or Razorpay webhooks.
-- **Client Wallet Mutation**: `updatePartnerWallet` altered partner balances on client actions without an immutable, double-entry financial ledger (`ledgerEntries`).
-- **Client-Priced Bookings & Dispatches**: Booking totals and dispatch rates were calculated on the client without server validation of hourly rates and hours.
+| Priority | File / flow | Finding | Status in this branch |
+| --- | --- | --- | --- |
+| Critical | server/middleware/auth.ts | Base64-decodes JWT claims without verifying signatures; email containing "admin" grants admin access. Optional auth ignores expiry. | Replaced with Admin SDK signature/issuer/audience/expiry/revocation verification and a trusted role store. No magic test tokens. |
+| Critical | firestore.rules, admins | Any user may create their own admin document if bootstrap_lock is absent. | All browser admin writes denied. Audit existing admin documents before rollout; the patch cannot undo historical escalation. |
+| Critical | server.ts, payments/verify and wallet/verify-deposit | A UID/order/positive amount can be sufficient for "paid"; an order HMAC is treated as proof of actual payment. | All payment and wallet routes return 503 outside development. Payment logic still requires a rebuild. |
+| Critical | server.ts, wallet/payout | Invents an IMPS reference and marks paid without calling a payout provider. | Disabled outside development; never enable this flow for real funds. |
+| High | server.ts, client Firebase SDK | Server writes use the unauthenticated browser SDK; rules may deny them. | New AI jobs/quotas/assets use Admin SDK. Legacy business writes remain unfinished and their APIs are blocked. |
+| High | paymentController, bookingController, projectController, briefController | Wallets, idempotency, booking locks, project phases and briefs are process-local maps. | These business APIs are blocked outside development. Six original tests prove only local behavior. |
+| High | firestore.rules | Broad cross-user project/brand/creative access; monetary writes and bootstrap escalation. | Ownership checks added; monetary browser writes disabled; organizations/activity/partner data restricted. Rules must be tested in Firebase Emulator and deployed to the named database. |
+| High | server.ts + services | Unauthenticated paid calls and caller-controlled UID quota keys. | API requests require Firebase ID tokens; legacy UID is overwritten; shared Firestore daily/minute count quotas added. |
+| High | vite.config.ts | Defines the Gemini secret for the frontend build. | Removed. A sentinel secret build check finds no injected secret. Actual past exposure cannot be established from this source alone. |
+| High | agentController.ts / agentService.ts | Fabricated campaigns, search grounding, virality/ROAS/reach and successful fallback responses. | Main agent generation fallbacks removed on both server and client. Team-board demonstration data remains explicitly labeled. |
+| High | live-voice WebSocket | No authentication, quota, origin or session-duration boundary. | WebSocket handshakes fail closed until authenticated live sessions are built. |
+| Medium | agentController.ts | Artificial 4.5-second timeout races valid campaign generation without cancelling it. | Removed; provider HTTP timeout used. |
+| Medium | src/lib/firebase.ts | Optional undefined profile fields can make Firestore signup synchronization fail. | Client Firestore ignores undefined optional values. Actual signup needs browser verification. |
+| Medium | UI / storage | Standalone media not persisted or shown in library; global browser task/chat history crosses accounts. | Media assets persisted privately; recent jobs shown in asset library; job/history storage scoped to the signed-in UID. |
+| Medium | App.tsx | All workspaces loaded in the initial bundle. | Heavy screens lazy-loaded. |
+| Medium | deployment | No reproducible container, reverse proxy, CI or dependency gate. | Docker, Compose, Nginx, Firebase indexes/rules configuration and CI added. |
 
-### P0 Data Integrity & State Bypasses
-- **Resilient Synthesis Fallbacks**: In `geminiService.ts`, when Gemini failed or timed out, the system fabricated synthetic ad copy, camera scripts, and fake visual prompts instead of failing truthfully (`status = 'FAILED'`).
-- **Simulated Creator Dispatch Radar**: `CreatorDispatchScreen.tsx` used `setInterval` timers, hardcoded creator entities (`Arjun Sharma`, `Vikram Malhotra`), and synthetic bids to simulate on-demand creator dispatch.
-- **Simulated Project Chat Responses**: `ProjectsScreen.tsx` scheduled artificial creator responses via `setTimeout()` after client messages.
+## What the generation foundation now does
 
-### P1 Missing Production Workflows
-- **Studio Lifecycle & Verification**: Studios lacked multi-step onboarding (`DRAFT` → `SUBMITTED` → `UNDER_REVIEW` → `VERIFIED` → `PUBLISHED`) and could be booked without administrative verification.
-- **Partner KYC & Capability Onboarding**: Partners lacked verified status, skill verification, equipment inspections, and KYC document uploads.
-- **Deliverable Versioning & Dispute Settlement Freezes**: Deliverables lacked immutable version records (`deliverables/{id}/versions/{versionId}`) and disputes did not freeze escrow payouts.
+- Uses the selected image model for generation and editing; preserves all five UI aspect ratios and size selection.
+- Validates prompt length, image MIME/base64/file signature and a 10 MB image limit.
+- Surfaces billing/access/quota/no-output/provider failures without substituting a model or stock asset.
+- Lets the user choose Veo Quality, Fast or Lite; explicitly requests one 8-second clip and the chosen resolution.
+- Deduplicates video submission by verified user and request key, and stores the provider operation in Firestore behind an opaque job ID.
+- Tracks failed/processing/saving/completed states; uses a transactional download lease to avoid duplicate archival by separate pollers.
+- Downloads actual provider video with the SDK and archives it in the private bucket before reporting complete.
+- Serves owner-authorized, expiring asset links with byte-range playback; browser clients cannot list the bucket or read other users' jobs.
+- Recovers the latest 30 video jobs after login, and lists the latest 30 completed assets through the library.
 
-### P2 Scalability & Observability
-- Unpaginated collection fetching across marketplace queries.
-- Browser timestamps used instead of Firestore `serverTimestamp()`.
-- Missing background queue orchestration for asynchronous video transcoding and webhook processing.
+## Remaining work before a public launch
 
----
+1. Verify Firebase Auth providers/domain, account creation, reset/delete, genuine tokens, trusted admin provisioning and existing admin history. Deploy and emulator-test the rules, indexes and private bucket policy; audit bucket IAM for public access.
+2. Run paid provider smoke tests: generate/edit PNG and JPEG with both image selections and supported aspect ratios; test all Veo selections, actual 1080p output, safety filtering, no-billing, quota and downloads. Compare output with the same model/prompt/reference/settings in AI Studio. Run browser tests for errors, refresh recovery and cross-account isolation.
+3. Replace polling-driven archival with a durable worker/queue, retry policy and reconciliation. Google operations can outlive HTTP requests. If submission succeeds but persisting the operation fails, or a request times out after provider acceptance, the job needs reconciliation; do not blindly regenerate. Current jobs time out after 30 minutes, and a refresh can miss an asset if more than 30 newer jobs exist.
+4. Validate every text/music/transcription provider contract and output schema; handle streamed audio formats correctly, persist audio, and test realistic input sizes. Music and transcription remain unverified live integrations.
+5. Rebuild team execution, approvals, publishing, scheduled agents, organization membership and content-calendar persistence. Current team boards and executive metrics are planning demonstrations; agent chat is a real Google call, not an executing autonomous organization.
+6. Migrate payments, wallet ledger, booking locks and project phase operations to database transactions. Bind payment amounts/currency/customer to stored orders, verify paid provider records and signed webhooks, deduplicate settlement permanently, reconcile refunds and payouts. Use integer paise and conserved double-entry postings. Keep these routes unavailable until this work passes concurrent/restart/tamper tests.
+7. Add monitoring, provider/cost correlation, backups/restore drills, retention and user deletion for assets, CSP/CORS review, per-organization access tests, worker load tests and rollback rehearsal. Count caps are not INR spending caps; also configure provider budget monitoring.
 
-## 2. Phase 1 Implementation: Real Authentication & Authoritative Admin Security
+## Validation boundaries
 
-### What Was Changed in Phase 1:
-1. **Removed Fast Auth & Local Storage Auth**:
-   - Completely deleted all local storage auth caching (`onlycreation_fast_auth_user_v2`).
-   - Removed fake UID generation (`fast_${Date.now()}`).
-   - Removed the "1-Click Instant Access" bypass button from `LoginScreen.tsx`.
-2. **Enforced Firebase Authentication as Sole Source of Truth**:
-   - Integrated genuine **Email & Password Authentication** (`signInWithEmailAndPassword`, `createUserWithEmailAndPassword`).
-   - Integrated **Password Reset** (`sendPasswordResetEmail`).
-   - Integrated **Email Verification** (`sendEmailVerification`).
-   - Integrated **Account Deletion** (`deleteUser`).
-   - Maintained **Google Popup Authentication** (`signInWithGoogle`).
-3. **Persisted Authoritative User Profile in Firestore (`users/{uid}`)**:
-   - Every authenticated user synchronizes to `users/{uid}` with: `uid`, `email`, `displayName`, `photoURL`, `phone`, `status: 'active'`, `createdAt`, `updatedAt`, `lastLoginAt`, `defaultOrganizationId`, and `role`.
-4. **Hardened Admin Security in `firestore.rules`**:
-   - Removed `request.auth.token.email == 'onlycreation07@gmail.com'`.
-   - Admin authorization now strictly requires `exists(/databases/$(database)/documents/admins/$(request.auth.uid))`.
-   - Admin collection write rules locked: users cannot write to `/admins/{userId}` unless already verified as an admin or during initial bootstrap locking.
-   - Deployed updated rules to live Firebase project via `deploy_firebase`.
+The original checkout passed TypeScript, six local tests and Vite build. New automated tests exercise forged/missing/revoked token paths (with a mocked Firebase verifier), trusted roles, media input validation, provider error contracts, model/settings preservation, durable job submission, duplicate keys, cross-user access and failed/no-output handling. They do not replace real cloud, browser, Firebase Emulator or payment testing. See PRODUCTION.md for deployment and acceptance instructions.
 
----
 
-## 3. Phased Implementation Roadmap
+## Checks completed for this branch
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ PHASE 0: Complete Codebase Audit & Freeze UI      [COMPLETED]│
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 1: Real Firebase Auth & Admin Security      [COMPLETED]│
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 2: Organization Model & Multi-Tenancy RBAC            │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 3: Firestore Rules Hardening & Storage Security        │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 4: AI Gateway, Truthful Failure & Creative Persistence│
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 5: Production Project State Machine & Versioning      │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 6: Creator Onboarding, Verification & KYC             │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 7: Studio Onboarding & Verification Engine            │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 8: Database-Driven Availability Engine                │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 9: Concurrency-Safe Booking Engine                    │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 10: Razorpay Payment Gateway & Webhook Signature      │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 11: Double-Entry Immutable Ledger & Payout Pipeline   │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 12: Production Workflow (Call Sheets, Ingest, QC)     │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 13: Project-Scoped Messaging & In-App Notifications   │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 14: Ratings, Reviews, Disputes & Support Tickets       │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 15: Admin Dashboard Operations & Audit Logs           │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 16: Automated Testing & Validation                    │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 17: Performance, Indexing & Cursor Pagination         │
-├─────────────────────────────────────────────────────────────┤
-│ PHASE 18: Final Production Launch Readiness Check           │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 4. Current State vs. Target State Matrix
-
-| Feature | Pre-Audit Prototype State | Phase 1 State | Target Production State | Production Ready? | Remaining Work |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Authentication** | Fast Auth, localStorage mock UIDs | Real Firebase Auth (Email/Pass & Google) | Full MFA & verified email session persistence | **Yes (Phase 1)** | Optional MFA integration |
-| **Admin Security** | Email string check in rules & client self-grant | Server-checked `admins/{uid}` in rules | Custom Claims + `admins/{uid}` | **Yes (Phase 1)** | Custom claims script |
-| **Organizations** | Simulated single organization | Initial `organizations/{orgId}` doc | Multi-org switcher, team invites, RBAC | **Partial** | Phase 2 implementation |
-| **Brands** | Local state + brand document | Firestore `brands/{userId}` sync | Multi-brand support per organization | **Partial** | Multi-brand selector |
-| **AI System** | Client API key, fake fallbacks, fake DALL-E | Client Gemini with basic retry | Authenticated AI Gateway proxy with quotas | **No** | Phase 4 implementation |
-| **Creatives** | React state, lost on refresh | Saved to `creatives/{id}` in Firestore | Versioning & asset attachment | **Partial** | Version history & storage |
-| **Projects** | Demo projects fallback, loose stages | Real projects in `projects/{id}` | Rigid finite state machine validation | **Partial** | State machine enforcement |
-| **Deliverables** | Client status toggles | Deliverable approvals & revision requests | Immutable versioning & Storage upload | **Partial** | Cloud Storage upload |
-| **Creator Dispatch**| Fake timers & hardcoded creators | Unchanged UI | Real matching engine via `dispatchOrders` | **No** | Phase 6 & 14 |
-| **Studios** | Basic listing, unverified | Basic Firestore listings | Admin verification & availability slots | **Partial** | Phase 7 & 8 |
-| **Bookings** | Simulated booking sheet | Real booking records | Double-booking lock & server price calc | **Partial** | Phase 9 |
-| **Payments** | `setTimeout(1200)` fake success | Recorded in Firestore | Razorpay orders, signatures & webhooks | **Partial** | Phase 10 |
-| **Ledger & Wallet**| Client wallet math | Saved payouts | Immutable double-entry `ledgerEntries` | **No** | Phase 11 |
-| **Audit Logs** | Client-invoked `addDoc` | Basic `activityLogs` | Server-authoritative tamper-proof audit | **Partial** | Phase 15 |
-
----
-
-## 5. Verification & Quality Assurance (Phase 1)
-- **TypeScript Linter (`npm run lint` / `tsc --noEmit`)**: **PASSED (0 errors)**.
-- **Production Build (`npm run build`)**: **PASSED**.
-- **Firestore Security Rules**: Deployed and active on project `gen-lang-client-0304979454` (database: `ai-studio-2e538c4f-eb30-4395-a7be-51e27a1946f1`).
+- TypeScript check and Vite production build passed; 30 tests passed across five test files.
+- npm audit reported zero vulnerabilities after compatible dependency updates and pinned transitive fixes. This is a point-in-time registry scan, not a security certification.
+- A production-server smoke test confirms health 200, unauthorized image/video 401, payment/payout 503 (including differently cased payment paths), invalid asset-link 401, readiness 503 with missing credentials, magic-token 401, and continued process health after the readiness failure.
+- A sentinel GEMINI_API_KEY did not appear in the compiled frontend. Initial main JavaScript dropped from approximately 1.51 MB to 0.76 MB after lazy loading; the remaining bundle-size warning still needs attention.
+- Docker execution, real provider calls, browser acceptance, Firebase Emulator/rule deployment, and VPS/domain/TLS deployment were not run.

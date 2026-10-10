@@ -47,6 +47,7 @@ export default function ImageStudio({ onUseAsStoryboard, onAnimateWithVeo }: Ima
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) { alert('Choose a PNG, JPEG or WebP image up to 10 MB.'); return; }
       const reader = new FileReader();
       reader.onload = (event) => {
         setSourceImage(event.target?.result as string);
@@ -58,10 +59,13 @@ export default function ImageStudio({ onUseAsStoryboard, onAnimateWithVeo }: Ima
 
   const handleExecute = async () => {
     if (!prompt.trim()) return;
+    if (mode === 'edit' && !sourceImage) { alert('Upload an image to edit.'); return; }
+    setResultImage(null);
+    setCaption('');
     setLoading(true);
     try {
       if (mode === 'edit' && sourceImage) {
-        const res = await geminiService.editImage(prompt, sourceImage, 'image/png', aspectRatio);
+        const res = await geminiService.editImage(prompt, sourceImage, 'image/png', aspectRatio, selectedModel, imageSize);
         setResultImage(res.imageUrl);
         setCaption(res.caption || prompt);
         setModelUsed(res.modelUsed || 'gemini-nano-banana-2.1');
@@ -72,12 +76,12 @@ export default function ImageStudio({ onUseAsStoryboard, onAnimateWithVeo }: Ima
         setModelUsed(res.modelUsed || selectedModel);
       }
 
-      // Persist to user library if authenticated
+      // Notify completion; binary assets are stored by the server.
       if (user?.uid) {
         dbService.addNotification({
           userId: user.uid,
           title: 'Image Rendered',
-          message: `Created with ${modelUsed}: "${prompt.slice(0, 30)}..."`,
+          message: `Created with ${selectedModel}: "${prompt.slice(0, 30)}..."`,
           type: 'deliverable'
         }).catch(() => {});
       }

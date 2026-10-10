@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { Response } from 'express';
 import crypto from 'crypto';
 import { GoogleGenAI, Type } from '@google/genai';

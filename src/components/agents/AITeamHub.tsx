@@ -304,6 +304,7 @@ export default function AITeamHub({
 
   return (
     <div className="flex flex-col h-full max-w-6xl mx-auto px-3 sm:px-4 py-3">
+      <p className="text-xs text-amber-200 bg-amber-500/10 rounded-lg p-3 mb-3">Team planning preview. Agent chat uses Google AI; team metrics, approvals and execution boards are demonstration data.</p>
       {/* Primary Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-white/5 shrink-0">
         <div>

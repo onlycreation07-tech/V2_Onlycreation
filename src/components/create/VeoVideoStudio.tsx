@@ -27,11 +27,9 @@ interface VeoVideoStudioProps {
 }
 
 const REASSURING_MESSAGES = [
-  'Synthesizing 3D spatial camera trajectories...',
-  'Calculating realistic lighting reflections and shadow occlusions...',
-  'Rendering fluid optical motion vectors via Veo 3...',
-  'Generating cinema-grade DaVinci color grading master...',
-  'Finalizing 4K/60fps video export...'
+  'Waiting for Google to finish generating your video...',
+  'Generation can take several minutes. You can use other screens while waiting.',
+  'Your video will be ready after it is saved securely.'
 ];
 
 export default function VeoVideoStudio({ initialImage }: VeoVideoStudioProps) {
@@ -39,6 +37,8 @@ export default function VeoVideoStudio({ initialImage }: VeoVideoStudioProps) {
   const [prompt, setPrompt] = useState('');
   const [startingImage, setStartingImage] = useState<string | null>(initialImage || null);
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>('16:9');
+  const [model, setModel] = useState<'veo-3.1-generate-preview' | 'veo-3.1-fast-generate-preview' | 'veo-3.1-lite-generate-preview'>('veo-3.1-generate-preview');
+  const [renderedModel, setRenderedModel] = useState('');
   const [resolution, setResolution] = useState<'720p' | '1080p'>('720p');
   const [generating, setGenerating] = useState(false);
   const [progressMsgIndex, setProgressMsgIndex] = useState(0);
@@ -75,42 +75,10 @@ export default function VeoVideoStudio({ initialImage }: VeoVideoStudioProps) {
     return () => clearInterval(interval);
   }, [generating]);
 
-  // Polling loop for video generation
-  useEffect(() => {
-    let timer: any;
-    if (operationName && generating) {
-      const check = async () => {
-        try {
-          const status = await geminiService.checkVideoStatus(operationName);
-          if (status.done) {
-            const url = await geminiService.downloadVideo(operationName);
-            setVideoUrl(url);
-            setGenerating(false);
-
-            if (user?.uid) {
-              dbService.addNotification({
-                userId: user.uid,
-                title: 'Veo Video Ready',
-                message: `Video generation completed: "${prompt.slice(0, 30)}..."`,
-                type: 'deliverable'
-              }).catch(() => {});
-            }
-          } else {
-            timer = setTimeout(check, 2500);
-          }
-        } catch (e) {
-          console.warn('Polling error:', e);
-          timer = setTimeout(check, 3000);
-        }
-      };
-      timer = setTimeout(check, 2500);
-    }
-    return () => clearTimeout(timer);
-  }, [operationName, generating]);
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) { setErrorMessage('Choose a PNG, JPEG or WebP image up to 10 MB.'); return; }
       const reader = new FileReader();
       reader.onload = (event) => {
         setStartingImage(event.target?.result as string);
@@ -164,7 +132,8 @@ export default function VeoVideoStudio({ initialImage }: VeoVideoStudioProps) {
       const payload: any = {
         prompt: prompt || 'Smooth cinematic forward dolly shot, atmospheric lighting, 8k commercial quality',
         aspectRatio,
-        resolution
+        resolution,
+        model
       };
 
       if (startingImage) {
@@ -176,10 +145,11 @@ export default function VeoVideoStudio({ initialImage }: VeoVideoStudioProps) {
 
       const res = await geminiService.generateVideo(payload);
       setOperationName(res.operationName);
+      setRenderedModel(res.model);
 
       // Register task into global Background Task Manager
       backgroundTaskService.addTask({
-        id: `video_${Date.now()}`,
+        id: `video_${res.operationName}`,
         type: 'video_generation',
         title: prompt.slice(0, 40) || 'Veo Cinematic Generation',
         status: 'RUNNING',
@@ -205,7 +175,7 @@ export default function VeoVideoStudio({ initialImage }: VeoVideoStudioProps) {
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-black text-white">Veo 3 Video Generation</h3>
               <span className="text-[8px] font-mono uppercase bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full font-bold">
-                veo-3.1-fast-generate-preview
+                {renderedModel || model}
               </span>
             </div>
             <p className="text-[10px] text-white/50 mt-0.5">High-definition Text-to-Video & Image-to-Video motion animation</p>
@@ -251,7 +221,7 @@ export default function VeoVideoStudio({ initialImage }: VeoVideoStudioProps) {
           <label className="border border-dashed border-white/15 hover:border-blue-500/50 bg-white/5 hover:bg-white/[0.08] rounded-2xl p-5 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all">
             <Upload size={20} className="text-blue-400" />
             <span className="text-xs font-bold text-white">Upload Photo to Animate with Veo</span>
-            <span className="text-[10px] text-white/40">PNG, JPG (up to 20MB)</span>
+            <span className="text-[10px] text-white/40">PNG, JPEG, WebP (up to 10MB)</span>
             <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
           </label>
         )}
@@ -271,6 +241,14 @@ export default function VeoVideoStudio({ initialImage }: VeoVideoStudioProps) {
         />
       </div>
 
+      <label className="text-xs text-white/70">
+        Veo model
+        <select value={model} disabled={generating} onChange={e => setModel(e.target.value as typeof model)} className="block w-full mt-2 p-3 bg-zinc-950 border border-white/10 rounded-xl text-white">
+          <option value="veo-3.1-generate-preview">Veo 3.1 — Quality</option>
+          <option value="veo-3.1-fast-generate-preview">Veo 3.1 Fast — Speed</option>
+          <option value="veo-3.1-lite-generate-preview">Veo 3.1 Lite — Economy</option>
+        </select>
+      </label>
       {/* Controls: Aspect Ratio & Resolution */}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
@@ -354,7 +332,7 @@ export default function VeoVideoStudio({ initialImage }: VeoVideoStudioProps) {
             </p>
           </div>
           <span className="text-[9px] text-white/40">
-            High-definition video rendering takes a brief moment. Please stay on this screen.
+            High-definition video rendering takes a brief moment. You can continue using the app.
           </span>
         </motion.div>
       )}

@@ -1,3 +1,4 @@
+import { apiFetch } from './apiClient';
 import { 
   collection, 
   addDoc, 
@@ -575,7 +576,7 @@ export const dbService = {
     customerName?: string;
     customerEmail?: string;
   }) {
-    const res = await fetch('/api/wallet/deposit-order', {
+    const res = await apiFetch('/api/wallet/deposit-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
@@ -597,7 +598,7 @@ export const dbService = {
     uid: string;
     method?: string;
   }) {
-    const res = await fetch('/api/wallet/verify-deposit', {
+    const res = await apiFetch('/api/wallet/verify-deposit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
@@ -617,7 +618,7 @@ export const dbService = {
     itemId?: string;
     itemTitle: string;
   }) {
-    const res = await fetch('/api/wallet/pay-from-wallet', {
+    const res = await apiFetch('/api/wallet/pay-from-wallet', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
@@ -637,7 +638,7 @@ export const dbService = {
     partnerRole: string;
     partnerName?: string;
   }) {
-    const res = await fetch('/api/wallet/payout', {
+    const res = await apiFetch('/api/wallet/payout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)

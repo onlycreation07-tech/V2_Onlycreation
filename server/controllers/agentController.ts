@@ -1,3 +1,5 @@
+import 'dotenv/config';
+import { sendMediaError } from '../lib/media';
 import { Response } from 'express';
 import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
@@ -6,6 +8,7 @@ import { AuthenticatedRequest } from '../types';
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || '',
   httpOptions: {
+    timeout: 120_000,
     headers: {
       'User-Agent': 'aistudio-build',
     }
@@ -380,65 +383,11 @@ Always prioritize speed and real actionable value. Help the owner eliminate busy
         reply: generatedText,
         sources,
         model: usedModel,
-        metrics: {
-          viralityScore: Math.floor(Math.random() * 8) + 92, // 92-99%
-          estimatedReach: '65,000 - 220,000 impressions',
-          timeSaved: '4.5 hours of manual work'
-        },
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      });
-    } catch (aiErr: any) {
-      console.warn(`[Agent ${agent.name}] Gemini call fallback:`, aiErr?.message);
-      
-      // Intelligent fallback matching agent's persona
-      if (agentId === 'ketan-growth' || agentId === 'grok-marketing') {
-        generatedText = `### 🔥 5 Viral Hooks for ${brandProfile?.name || 'Your Brand'} (Google AI Grounded)\n\n` +
-          `1. **The Contrarian Stop:** "Stop wasting money on traditional ads until you fix this 3-second hook drop-off."\n` +
-          `2. **Curiosity Gap:** "We tested 15 different video styles across Instagram Reels. Only ONE gave a 4.2x ROAS spike."\n` +
-          `3. **The Proof Stack:** "Why top DTC creators abandoned standard studio setups for on-demand dynamic shots."\n` +
-          `4. **FOMO Pattern Interrupt:** "If your 2026 ad campaign doesn't leverage 9:16 cinematic pacing, your budget is burning."\n` +
-          `5. **Behind-The-Scenes:** "Behind the lens: How we crafted a 4K studio-quality reel in 12 hours."\n\n` +
-          `### 🎯 Recommended Immediate Action\n` +
-          `- Produce Hook #1 in AI Studio with Veo Video or Image Studio.\n` +
-          `- Grounded with live Google Search advertising benchmarks.`;
-      } else if (agentId === 'nova-director') {
-        generatedText = `### 🎬 Visual Production Directive: ${brandProfile?.name || 'Your Brand'}\n\n` +
-          `**Aesthetic**: Crisp 4K cinematic realism, anamorphic 2.39:1 aspect ratio.\n` +
-          `**Lighting**: 3-point key light with warm 3200K tungsten backlight and subtle cyan rim light.\n` +
-          `**Camera Movement**: Motorized slider parallax reveal (24fps) ramping into 120fps slow-motion macro texture shot.\n` +
-          `**Color Grade**: Kodak 2383 emulation with soft rolled-off highlights and punchy deep blacks.\n\n` +
-          `*Send this to AI Studio or Veo Video Studio to begin visual generation immediately.*`;
-      } else if (agentId === 'echo-outreach') {
-        generatedText = `### 📩 High-Response Creator Outreach DM\n\n` +
-          `"Hey [Creator Name]! Loved your recent Reel on [Specific Detail]. We're producing an exclusive campaign for ${brandProfile?.name || 'our brand'} and want you as our featured visual face. We handle all studio booking and gear dispatch—you just bring your energy. Are you open to a paid collaboration next Tuesday?"\n\n` +
-          `*Projected Response Rate: 84% based on 150+ previous creator outreach dispatches.*`;
-      } else {
-        generatedText = `### 💰 Production Budget Optimization\n\n` +
-          `**Audit Summary**: Budget under ₹30,000.\n` +
-          `- Studio Hire: ₹8,000 (4-Hour slot at CineSpace)\n` +
-          `- Creator Dispatch (Lead DP + Sony FX3): ₹14,000\n` +
-          `- Lighting & Audio Pack: ₹4,000\n` +
-          `- Escrow Buffer / Color Grading: ₹4,000\n` +
-          `**Total Cost**: ₹30,000 | **Estimated Media Value**: ₹95,000.\n` +
-          `*Margin Saved: ₹12,500 compared to traditional agency retainers.*`;
-      }
 
-      return res.json({
-        success: true,
-        agentId: agent.id,
-        agentName: agent.name,
-        reply: generatedText,
-        sources: [
-          { title: 'Google Trends & Advertising Benchmarks', uri: 'https://trends.google.com' }
-        ],
-        model: usedModel,
-        metrics: {
-          viralityScore: 95,
-          estimatedReach: '50,000 - 150,000 impressions',
-          timeSaved: '4.5 hours of manual work'
-        },
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       });
+    } catch (error) {
+      return sendMediaError(res, error);
     }
   } catch (err: any) {
     console.error('Agent chat error:', err);
@@ -466,66 +415,13 @@ Deliver in structured JSON format with:
 4. contentCalendar: Array of 7 days with day, title, format, audioVibe, concept
 5. targetAudienceInsight: Why this will convert and target interests to choose in Meta/TikTok Ads Manager`;
 
-    let campaignData: any = null;
-
-    try {
-      const generatePromise = ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-        }
-      });
-
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('AI generation timeout')), 4500)
-      );
-
-      const response: any = await Promise.race([generatePromise, timeoutPromise]);
-
-      if (response && response.text) {
-        campaignData = JSON.parse(response.text);
-      }
-    } catch (e) {
-      console.warn('Fast fallback structured campaign generation triggered:', e);
-      campaignData = {
-        campaignTitle: `${brandName} Viral Velocity Sprint`,
-        viralHooks: [
-          'The 1 mistake you make before purchasing premium lifestyle products',
-          'We tested 20 video ads—here is the exact 15-second format that won',
-          'Stop scrolling if you care about quality and high-definition craftsmanship',
-          'What happens when you combine cinematic studios with on-demand creators?',
-          'The secret behind our best-selling commercial concept'
-        ],
-        adCopies: [
-          {
-            hook: 'Quality speaks louder than words.',
-            body: `Discover how ${brandName} is redefining standards with our new product drop. Filmed in pristine 4K studios.`,
-            cta: 'Shop the Collection Now'
-          },
-          {
-            hook: 'Built for those who refuse average.',
-            body: `Every detail engineered for distinction. Elevate your everyday routine today.`,
-            cta: 'Claim 15% Early Access'
-          },
-          {
-            hook: 'Tired of overpaying for mid products?',
-            body: `Direct from workshop to your doorstep. Unmatched quality without the agency middleman markup.`,
-            cta: 'Explore the Lineup'
-          }
-        ],
-        contentCalendar: [
-          { day: 'Day 1', title: 'The Problem Agitation', format: '9:16 Reel', audioVibe: 'Tense cinematic drone', concept: 'Highlight everyday pain point' },
-          { day: 'Day 2', title: 'Studio Behind The Scenes', format: '16:9 Cutdown', audioVibe: 'Lo-fi beats', concept: 'Show the camera crew and lighting rig' },
-          { day: 'Day 3', title: 'Macro Texture Tease', format: '9:16 Macro', audioVibe: 'ASMR Crisp audio', concept: 'Extreme close up shots of product texture' },
-          { day: 'Day 4', title: 'Contrarian Stance', format: 'Talking Head', audioVibe: 'Punchy speech', concept: 'Founder addresses why everyone else does it wrong' },
-          { day: 'Day 5', title: 'Customer Transformation', format: 'Split Screen', audioVibe: 'Uplifting synthwave', concept: 'Before and After comparison' },
-          { day: 'Day 6', title: 'Creator Collaboration Reel', format: 'Street Interview', audioVibe: 'Upbeat funk', concept: 'Street reactions to testing the product' },
-          { day: 'Day 7', title: 'Drop Countdown', format: 'Fast Montage', audioVibe: '130 BPM Tech House', concept: 'High energy 7-second looping reel' }
-        ],
-        targetAudienceInsight: 'Target urban age 21-38 interested in luxury lifestyle, boutique design, cinematography, and D2C brands. High intent purchase demographic.'
-      };
-    }
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: prompt,
+      config: { responseMimeType: 'application/json' }
+    });
+    if (!response.text) throw new Error('No campaign returned');
+    const campaignData = JSON.parse(response.text);
 
     return res.json({
       success: true,
