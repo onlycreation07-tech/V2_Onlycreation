@@ -1,0 +1,11 @@
+{
+  "name": "Remix OnlyCreation",
+  "description": "AI-powered creative studio and studio booking marketplace. Go from idea to production in minutes.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

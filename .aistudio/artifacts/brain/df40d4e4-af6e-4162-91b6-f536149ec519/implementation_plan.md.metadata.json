@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation plan to eliminate video autoplay on load, fix image/video generation prompt alignment (removing random fallbacks), and add an interactive AI Bot toggle (On/Off) and assignment control in the Hybrid Team Hub.",
+  "updatedAt":  "2026-10-10T15:35:23.613976520Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

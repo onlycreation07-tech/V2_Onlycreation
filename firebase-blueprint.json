@@ -1,0 +1,443 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User account and profile metadata",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "suspended", "pending"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "lastLoginAt": { "type": "string" },
+        "defaultOrganizationId": { "type": "string" },
+        "role": { "type": "string" },
+        "isPartner": { "type": "boolean" },
+        "partnerRole": { "type": "string" }
+      },
+      "required": ["uid", "status"]
+    },
+    "Organization": {
+      "title": "Organization Workspace",
+      "description": "Team workspace and role management",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "plan": { "type": "string", "enum": ["starter", "pro", "enterprise"] },
+        "members": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "ownerId", "plan"]
+    },
+    "Brand": {
+      "title": "Brand Profile",
+      "description": "User's brand identity data",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "industry": { "type": "string" },
+        "targetAudience": { "type": "string" },
+        "tone": { "type": "string" },
+        "primaryColor": { "type": "string" },
+        "fontVibe": { "type": "string", "enum": ["modern", "serif", "brutalist", "minimal"] },
+        "likedStudioIds": { "type": "array", "items": { "type": "string" } },
+        "logoUrl": { "type": "string" },
+        "website": { "type": "string" },
+        "organizationId": { "type": "string" }
+      },
+      "required": ["userId", "name"]
+    },
+    "Booking": {
+      "title": "Studio Booking",
+      "description": "A scheduled session in a studio",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "studioId": { "type": "string" },
+        "studioName": { "type": "string" },
+        "date": { "type": "string" },
+        "hours": { "type": "number" },
+        "totalPrice": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "completed"] },
+        "creativeId": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["studioId", "date", "hours", "totalPrice", "status"]
+    },
+    "DispatchBooking": {
+      "title": "On-Demand Creator Dispatch Booking",
+      "description": "Uber-style instant creator shoot dispatch",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "creatorTier": { "type": "string", "enum": ["instagrammer", "dslr_pro", "agency_crew", "rental_express"] },
+        "creatorName": { "type": "string" },
+        "creatorPhoto": { "type": "string" },
+        "pickupLocation": { "type": "string" },
+        "shootLocation": { "type": "string" },
+        "durationHours": { "type": "number" },
+        "totalPrice": { "type": "number" },
+        "status": { "type": "string", "enum": ["matching", "en_route", "arrived", "shooting", "completed"] },
+        "deliveredReelUrl": { "type": "string" },
+        "rating": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "creatorTier", "shootLocation", "totalPrice", "status"]
+    },
+    "AdCreative": {
+      "title": "Ad Creative",
+      "description": "AI generated ad concept",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "prompt": { "type": "string" },
+        "copy": { "type": "string" },
+        "imageUrls": { "type": "array", "items": { "type": "string" } },
+        "videoScript": { "type": "string" },
+        "productionBrief": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "approved", "produced"] },
+        "brandId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "prompt", "copy"]
+    },
+    "Studio": {
+      "title": "Production Studio",
+      "description": "Marketplace listing for a studio or billboard",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "location": { "type": "string" },
+        "pricePerHour": { "type": "number" },
+        "imageUrl": { "type": "string" },
+        "category": { "type": "string", "enum": ["photography", "video", "music", "podcast", "mixed", "billboard"] },
+        "equipment": { "type": "array", "items": { "type": "string" } },
+        "amenities": { "type": "array", "items": { "type": "string" } },
+        "genres": { "type": "array", "items": { "type": "string" } },
+        "previousWorks": { "type": "array" },
+        "rating": { "type": "number" },
+        "isPremium": { "type": "boolean" },
+        "availability": { "type": "string" },
+        "socialLinks": { "type": "object" },
+        "addedBy": { "type": "string" }
+      },
+      "required": ["name", "pricePerHour", "category"]
+    },
+    "AppConfig": {
+      "title": "App Configuration",
+      "description": "Global settings controlled by admin",
+      "type": "object",
+      "properties": {
+        "subscriptionPrice": { "type": "number" },
+        "commissionRate": { "type": "number" },
+        "panIndiaMode": { "type": "boolean" },
+        "featureFlags": { "type": "object" }
+      }
+    },
+    "BillboardEnquiry": {
+      "title": "Billboard Enquiry",
+      "description": "User request for billboard marketing",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "prompt": { "type": "string" },
+        "billboardType": { "type": "string", "enum": ["led", "banner", "scrolling", "any"] },
+        "budget": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "contacted"] },
+        "suggestedLocations": { "type": "array", "items": { "type": "string" } },
+        "suggestedQuantity": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "prompt", "billboardType", "budget"]
+    },
+    "Project": {
+      "title": "Production Project",
+      "description": "Full lifecycle creative production project",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "organizationId": { "type": "string" },
+        "brandId": { "type": "string" },
+        "title": { "type": "string" },
+        "brandName": { "type": "string" },
+        "stage": { "type": "string", "enum": ["ideation", "pre_production", "production", "review", "delivered"] },
+        "budget": { "type": "number" },
+        "creativePrompt": { "type": "string" },
+        "assignedCreator": { "type": "object" },
+        "milestones": { "type": "array" },
+        "deliverables": { "type": "array" },
+        "aiHealthScore": { "type": "number" },
+        "aiRiskAnalysis": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "title", "stage"]
+    },
+    "ProjectMessage": {
+      "title": "Anonymous Project Message",
+      "description": "Internal project communications without phone numbers",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string", "enum": ["client", "creator", "producer", "admin"] },
+        "content": { "type": "string" },
+        "attachmentUrl": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["projectId", "senderId", "senderName", "content"]
+    },
+    "ActivityLog": {
+      "title": "Platform Activity Log",
+      "description": "System and user action audit trail",
+      "type": "object",
+      "properties": {
+        "action": { "type": "string" },
+        "entityType": { "type": "string" },
+        "entityId": { "type": "string" },
+        "performedBy": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["action", "entityType", "entityId", "performedBy"]
+    },
+    "PaymentRecord": {
+      "title": "Payment Transaction",
+      "description": "Financial transaction ledger for bookings and dispatches",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "orderId": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "itemType": { "type": "string", "enum": ["studio_booking", "creator_dispatch", "omas_campaign", "partner_subscription", "project_escrow"] },
+        "itemId": { "type": "string" },
+        "method": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "success", "failed", "refunded"] },
+        "receiptUrl": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "orderId", "amount", "status"]
+    },
+    "PartnerPayout": {
+      "title": "Partner Payout",
+      "description": "Creator withdrawal request and disbursement",
+      "type": "object",
+      "properties": {
+        "partnerId": { "type": "string" },
+        "partnerName": { "type": "string" },
+        "partnerRole": { "type": "string" },
+        "amount": { "type": "number" },
+        "upiId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "paid", "rejected"] },
+        "requestedAt": { "type": "string" },
+        "paidAt": { "type": "string" },
+        "transactionRef": { "type": "string" }
+      },
+      "required": ["partnerId", "amount", "upiId", "status"]
+    },
+    "PartnerProfile": {
+      "title": "Partner Creator Profile",
+      "description": "Registered partner creator or vendor details",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "avatar": { "type": "string" },
+        "rating": { "type": "number" },
+        "completedJobs": { "type": "number" },
+        "walletBalance": { "type": "number" },
+        "totalEarnings": { "type": "number" },
+        "equipmentSummary": { "type": "string" },
+        "city": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "trainingProgressPct": { "type": "number" }
+      },
+      "required": ["name", "role", "walletBalance"]
+    },
+    "ReviewRecord": {
+      "title": "Review & Rating",
+      "description": "Client reviews for creators and studios",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["creator", "studio", "project"] },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["authorId", "targetId", "rating"]
+    },
+    "DisputeRecord": {
+      "title": "Platform Dispute",
+      "description": "Escalated disputes regarding projects or bookings",
+      "type": "object",
+      "properties": {
+        "raisedBy": { "type": "string" },
+        "raisedByName": { "type": "string" },
+        "raisedAgainst": { "type": "string" },
+        "reason": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "investigating", "resolved", "dismissed"] },
+        "resolution": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["raisedBy", "reason", "description", "status"]
+    },
+    "AppNotification": {
+      "title": "Notification",
+      "description": "In-app alerts and notifications",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "read": { "type": "boolean" },
+        "link": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "title", "message", "read"]
+    },
+    "Wallet": {
+      "title": "User and Partner Wallet",
+      "description": "Authoritative wallet holding available and pending balance",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "availableBalance": { "type": "number" },
+        "pendingBalance": { "type": "number" },
+        "totalEarned": { "type": "number" },
+        "currency": { "type": "string", "enum": ["INR", "OC_CREDIT"] },
+        "updatedAt": { "type": "string" },
+        "version": { "type": "number" }
+      },
+      "required": ["uid", "availableBalance", "pendingBalance", "currency", "version"]
+    },
+    "LedgerEntry": {
+      "title": "Immutable Ledger Entry",
+      "description": "Double-entry append-only transaction record for all money movements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "type": { 
+          "type": "string", 
+          "enum": ["deposit", "booking_payment", "dispatch_payment", "payout", "refund", "tip", "adjustment"] 
+        },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "direction": { "type": "string", "enum": ["credit", "debit"] },
+        "balanceAfter": { "type": "number" },
+        "relatedOrderId": { "type": "string" },
+        "relatedBookingId": { "type": "string" },
+        "relatedPayoutId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "settled", "failed", "reversed"] },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["id", "uid", "type", "amount", "currency", "direction", "balanceAfter", "status", "createdAt", "createdBy"]
+    }
+  },
+  "firestore": {
+    "wallets/{userId}": {
+      "schema": "Wallet",
+      "description": "Authoritative user/partner wallets (read-only for owner, server managed)"
+    },
+    "ledgerEntries/{entryId}": {
+      "schema": "LedgerEntry",
+      "description": "Immutable double-entry transaction ledger"
+    },
+    "users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User accounts and permissions"
+    },
+    "organizations/{organizationId}": {
+      "schema": "Organization",
+      "description": "Organizations and team workspaces"
+    },
+    "projects/{projectId}": {
+      "schema": "Project",
+      "description": "Production project records"
+    },
+    "messages/{messageId}": {
+      "schema": "ProjectMessage",
+      "description": "Anonymous internal project chat"
+    },
+    "activityLogs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "System and platform audit logs"
+    },
+    "dispatches/{dispatchId}": {
+      "schema": "DispatchBooking",
+      "description": "Uber-style creator shoot dispatches"
+    },
+    "bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Studio booking records"
+    },
+    "brands/{brandId}": {
+      "schema": "Brand",
+      "description": "User brand profiles"
+    },
+    "creatives/{creativeId}": {
+      "schema": "AdCreative",
+      "description": "User generated creatives"
+    },
+    "studios/{studioId}": {
+      "schema": "Studio",
+      "description": "Marketplace studios and billboards"
+    },
+    "config/main": {
+      "schema": "AppConfig",
+      "description": "Global app settings"
+    },
+    "enquiries/{enquiryId}": {
+      "schema": "BillboardEnquiry",
+      "description": "Billboard marketing requests"
+    },
+    "payments/{paymentId}": {
+      "schema": "PaymentRecord",
+      "description": "Financial payment transaction records"
+    },
+    "payouts/{payoutId}": {
+      "schema": "PartnerPayout",
+      "description": "Partner creator payouts"
+    },
+    "partnerProfiles/{partnerId}": {
+      "schema": "PartnerProfile",
+      "description": "Partner profiles and wallets"
+    },
+    "reviews/{reviewId}": {
+      "schema": "ReviewRecord",
+      "description": "Creator and studio reviews"
+    },
+    "disputes/{disputeId}": {
+      "schema": "DisputeRecord",
+      "description": "Dispute resolutions"
+    },
+    "notifications/{notificationId}": {
+      "schema": "AppNotification",
+      "description": "User notification inbox"
+    }
+  }
+}
