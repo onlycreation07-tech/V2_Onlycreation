@@ -29,58 +29,55 @@ service cloud.firestore {
 
     // --- Organizations ---
     match /organizations/{organizationId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow read: if isOwner(existing().ownerId) || isAdmin();
+      allow create: if isSignedIn() && incoming().ownerId == request.auth.uid;
+      allow update: if (isOwner(existing().ownerId) || isAdmin()) && incoming().ownerId == existing().ownerId;
+      allow delete: if isOwner(existing().ownerId) || isAdmin();
     }
 
     // --- Projects ---
-    match /projects/{projectId} {
-      allow create: if isSignedIn();
-      allow get, list: if isSignedIn();
-      allow update: if isSignedIn();
+    match /projects/{id} {
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow update: if (isOwner(existing().userId) || isAdmin()) && incoming().userId == existing().userId;
       allow delete: if isOwner(existing().userId) || isAdmin();
     }
 
     // --- Messages ---
     match /messages/{messageId} {
-      allow create: if isSignedIn();
-      allow read: if isSignedIn();
-      allow update, delete: if isAdmin();
+      function projectOwner() {
+        return isSignedIn() && get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.userId == request.auth.uid;
+      }
+      allow read: if projectOwner() || isAdmin();
+      allow create, update, delete: if false;
     }
 
     // --- Activity Logs ---
     match /activityLogs/{logId} {
-      allow create: if isSignedIn();
-      allow read: if isSignedIn();
-      allow update, delete: if isAdmin();
+      allow create: if isSignedIn() && incoming().performedBy == request.auth.uid;
+      allow read: if isOwner(existing().performedBy) || isAdmin();
+      allow update, delete: if false;
     }
 
     // --- Admins (Role escalation prevention) ---
     match /admins/{userId} {
-      allow read: if isSignedIn();
-      allow create: if isAdmin() || (
-        isSignedIn() && request.auth.uid == userId && !exists(/databases/$(database)/documents/admins/bootstrap_lock)
-      );
-      allow update, delete: if isAdmin();
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if false;
     }
 
     // --- Dispatches ---
-    match /dispatches/{dispatchId} {
-      allow create: if isSignedIn();
-      allow get, list: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isAdmin();
+    match /dispatches/{id} {
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow update: if (isOwner(existing().userId) || isAdmin()) && incoming().userId == existing().userId;
+      allow delete: if isOwner(existing().userId) || isAdmin();
     }
 
     // --- Bookings (Locked against price manipulation) ---
-    match /bookings/{bookingId} {
-      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
-      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow update: if isSignedIn() && (isOwner(resource.data.userId) || isAdmin()) && (
-        !('totalPrice' in incoming()) || incoming().totalPrice == resource.data.totalPrice
-      );
-      allow delete: if isAdmin();
+    match /bookings/{id} {
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow write: if false;
     }
 
     // --- Booking Locks (Concurrency safe double-booking prevention) ---
@@ -103,16 +100,18 @@ service cloud.firestore {
     }
 
     // --- Brands ---
-    match /brands/{brandId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+    match /brands/{id} {
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow update: if (isOwner(existing().userId) || isAdmin()) && incoming().userId == existing().userId;
       allow delete: if isOwner(existing().userId) || isAdmin();
     }
 
     // --- Creatives ---
-    match /creatives/{creativeId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+    match /creatives/{id} {
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow update: if (isOwner(existing().userId) || isAdmin()) && incoming().userId == existing().userId;
       allow delete: if isOwner(existing().userId) || isAdmin();
     }
 
@@ -137,10 +136,8 @@ service cloud.firestore {
 
     // --- Wallets (Strict server-authoritative, client read-only) ---
     match /wallets/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin();
-      allow create: if isOwner(userId) && incoming().availableBalance == 0 && incoming().totalEarned == 0;
-      allow update, delete: if isAdmin();
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if false;
     }
 
     // --- Ledger Entries (Double-Entry, Strictly Immutable) ---
@@ -152,10 +149,9 @@ service cloud.firestore {
     }
 
     // --- Payments (Authoritative status and tamper-proof) ---
-    match /payments/{paymentId} {
-      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && incoming().userId == request.auth.uid && incoming().status == 'pending';
-      allow update, delete: if isAdmin();
+    match /payments/{id} {
+      allow read: if isOwner(existing().userId) || isAdmin();
+      allow write: if false;
     }
 
     // --- Partner Payouts (Server/Admin controlled) ---
@@ -166,9 +162,8 @@ service cloud.firestore {
 
     // --- Partner Profiles ---
     match /partnerProfiles/{partnerId} {
-      allow read: if true;
-      allow create, update: if isOwner(partnerId) || isAdmin();
-      allow delete: if isAdmin();
+      allow read: if isOwner(partnerId) || isAdmin();
+      allow write: if false;
     }
 
     // --- Reviews ---
@@ -187,7 +182,7 @@ service cloud.firestore {
 
     // --- Notifications ---
     match /notifications/{notificationId} {
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
       allow read, update: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }

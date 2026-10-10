@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy } from 'react';
 import { View, AdCreative, BrandProfile, AIAgentId } from './types';
 import TopNavbar from './components/layout/TopNavbar';
 import AppDrawer from './components/layout/AppDrawer';
@@ -11,22 +11,22 @@ import BottomNav from './components/layout/BottomNav';
 
 // Creation AI V2 Primary Workspaces
 import CreationAIChat from './components/chat/CreationAIChat';
-import AIStudioSuite from './components/studio/AIStudioSuite';
-import AITeamHub from './components/agents/AITeamHub';
-import ContentCalendarScreen from './components/calendar/ContentCalendarScreen';
-import AssetLibraryScreen from './components/library/AssetLibraryScreen';
-import ProjectsScreen from './components/projects/ProjectsScreen';
-import ProfileScreen from './components/profile/ProfileScreen';
-import AdminDashboard from './components/admin/AdminDashboard';
+const AIStudioSuite = lazy(() => import('./components/studio/AIStudioSuite'));
+const AITeamHub = lazy(() => import('./components/agents/AITeamHub'));
+const ContentCalendarScreen = lazy(() => import('./components/calendar/ContentCalendarScreen'));
+const AssetLibraryScreen = lazy(() => import('./components/library/AssetLibraryScreen'));
+const ProjectsScreen = lazy(() => import('./components/projects/ProjectsScreen'));
+const ProfileScreen = lazy(() => import('./components/profile/ProfileScreen'));
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard'));
 import LoginScreen from './components/auth/LoginScreen';
 
 // Legacy Marketplace Views (Preserved & accessible via feature flag)
-import HomeScreen from './components/home/HomeScreen';
-import CreateScreen from './components/create/CreateScreen';
-import StudiosScreen from './components/studios/StudiosScreen';
-import BillboardRequestScreen from './components/billboards/BillboardRequestScreen';
-import CreatorDispatchScreen from './components/dispatch/CreatorDispatchScreen';
-import PartnerPortal from './components/partner/PartnerPortal';
+const HomeScreen = lazy(() => import('./components/home/HomeScreen'));
+const CreateScreen = lazy(() => import('./components/create/CreateScreen'));
+const StudiosScreen = lazy(() => import('./components/studios/StudiosScreen'));
+const BillboardRequestScreen = lazy(() => import('./components/billboards/BillboardRequestScreen'));
+const CreatorDispatchScreen = lazy(() => import('./components/dispatch/CreatorDispatchScreen'));
+const PartnerPortal = lazy(() => import('./components/partner/PartnerPortal'));
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BackgroundTaskProvider } from './context/BackgroundTaskContext';
@@ -41,7 +41,7 @@ function AppContent() {
   const [currentView, setCurrentView] = useState<View>('chat');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showLegacyMarketplace, setShowLegacyMarketplace] = useState(() => {
-    return localStorage.getItem('creation_ai_legacy_marketplace') === 'true';
+    return import.meta.env.DEV && localStorage.getItem('creation_ai_legacy_marketplace') === 'true';
   });
 
   const [creatives, setCreatives] = useState<AdCreative[]>([]);
@@ -67,29 +67,34 @@ function AppContent() {
 
   useEffect(() => {
     const handleStorageChange = () => {
-      setShowLegacyMarketplace(localStorage.getItem('creation_ai_legacy_marketplace') === 'true');
+      setShowLegacyMarketplace(import.meta.env.DEV && localStorage.getItem('creation_ai_legacy_marketplace') === 'true');
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    setCreatives([]);
+    setActiveCreative(null);
+    setBrandProfile({ name: 'Your Brand', industry: 'Lifestyle', targetAudience: 'General', tone: 'Professional', primaryColor: '#7C3AED', fontVibe: 'minimal' });
     if ((user as any)?.isPartner && showLegacyMarketplace) {
       setCurrentView('partner');
     }
     if (user?.uid) {
       dbService.getBrand(user.uid).then(saved => {
-        if (saved) {
+        if (saved && !cancelled) {
           setBrandProfile(prev => ({ ...prev, ...saved }));
         }
       }).catch(e => console.warn("Could not load user brand:", e));
 
       dbService.getUserCreatives(user.uid).then(userCreatives => {
-        if (userCreatives && userCreatives.length > 0) {
+        if (userCreatives && !cancelled) {
           setCreatives(userCreatives);
         }
       }).catch(e => console.warn("Could not load user creatives:", e));
     }
+    return () => { cancelled = true; };
   }, [user]);
 
   const handleCreativeGenerated = (creative: AdCreative) => {
@@ -168,7 +173,7 @@ function AppContent() {
   };
 
   const handleToggleLegacyMarketplace = (enabled: boolean) => {
-    setShowLegacyMarketplace(enabled);
+    setShowLegacyMarketplace(import.meta.env.DEV && enabled);
     localStorage.setItem('creation_ai_legacy_marketplace', String(enabled));
   };
 

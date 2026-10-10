@@ -1,3 +1,4 @@
+import { apiFetch } from './apiClient';
 export interface PaymentOrder {
   orderId: string;
   amount: number;
@@ -38,7 +39,7 @@ export const paymentService = {
   // Authoritative server-side order creation (Cashfree prioritized)
   async createOrder(params: Omit<PaymentOrder, 'orderId'>): Promise<PaymentOrder> {
     try {
-      const response = await fetch('/api/payments/create-order', {
+      const response = await apiFetch('/api/payments/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params)
@@ -62,7 +63,7 @@ export const paymentService = {
   // Authoritative server-side payment verification
   async verifyPayment(order: PaymentOrder, method: string, signature?: string): Promise<PaymentResult> {
     try {
-      const response = await fetch('/api/payments/verify', {
+      const response = await apiFetch('/api/payments/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -123,7 +124,7 @@ export const paymentService = {
   // Check live status of Cashfree order
   async checkOrderStatus(orderId: string): Promise<any> {
     try {
-      const res = await fetch(`/api/payments/cashfree/status/${encodeURIComponent(orderId)}`);
+      const res = await apiFetch(`/api/payments/cashfree/status/${encodeURIComponent(orderId)}`);
       if (res.ok) {
         return await res.json();
       }

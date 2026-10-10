@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/apiClient';
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Sparkles, 
@@ -158,7 +159,7 @@ export default function CreationAIChat({
       if (isAdRequest) {
         setIsGeneratingPlan(true);
         // Step 1: Call structured ad plan generator
-        const planRes = await fetch('/api/creation-ai/create-ad-plan', {
+        const planRes = await apiFetch('/api/creation-ai/create-ad-plan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -171,6 +172,7 @@ export default function CreationAIChat({
         });
 
         const planData = await planRes.json();
+        if (!planRes.ok) throw new Error(planData.error || 'Could not create ad plan');
         const adPlan: ProductionAdPlan = planData.plan;
 
         const assistantMsg: CreationAIChatMessage = {
@@ -191,7 +193,7 @@ export default function CreationAIChat({
           content: m.content
         }));
 
-        const chatRes = await fetch('/api/chat', {
+        const chatRes = await apiFetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -204,6 +206,7 @@ export default function CreationAIChat({
         });
 
         const data = await chatRes.json();
+        if (!chatRes.ok) throw new Error(data.error || 'Chat failed');
 
         const assistantMsg: CreationAIChatMessage = {
           id: `msg_asst_${Date.now()}`,
@@ -295,7 +298,7 @@ export default function CreationAIChat({
   const handleDelegateToAgent = async (agentId: AIAgentId, contextPrompt: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/creation-ai/delegate-agent', {
+      const res = await apiFetch('/api/creation-ai/delegate-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -307,6 +310,7 @@ export default function CreationAIChat({
       });
 
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Agent delegation failed');
       if (data.task) {
         setMessages(prev => [
           ...prev,

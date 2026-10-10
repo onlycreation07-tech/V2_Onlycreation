@@ -1,3 +1,4 @@
+import { apiFetch } from './apiClient';
 import { AdCreative, BrandProfile } from "../types";
 import { auth } from "../lib/firebase";
 
@@ -24,7 +25,7 @@ export const geminiService = {
     const uid = auth.currentUser?.uid;
 
     try {
-      const res = await fetch('/api/ai/generate', {
+      const res = await apiFetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -41,10 +42,7 @@ export const geminiService = {
         data = json.data;
       } else {
         const errorJson = await res.json().catch(() => ({}));
-        if (res.status === 429) {
-          throw new Error(errorJson.error || 'Daily AI Generation quota reached (50/50)');
-        }
-        data = errorJson.fallback;
+        throw new Error(errorJson.error || 'Ad generation failed');
       }
 
       // Generate Primary & B-Roll Visuals with gemini-3.1-flash-image-preview
@@ -72,19 +70,8 @@ export const geminiService = {
         status: 'draft',
         createdAt: new Date().toISOString(),
       };
-    } catch (error: any) {
-      console.warn("AI Gateway fallback synthesis:", error);
-      const generatedImg = await this.generateImage(prompt, options?.aspectRatio || '9:16');
-      return {
-        id: Math.random().toString(36).substring(2, 9),
-        prompt,
-        copy: `Elevate your aesthetic with ${brand?.name || 'OnlyCreation'}. Crafted for visionary creators who refuse to blend in.`,
-        imageUrls: [generatedImg.imageUrl],
-        videoScript: `Scene 1: Rapid whip pan across urban neon architecture.\nScene 2: Creator unboxes the project asset with crisp ambient audio.\nScene 3: Bold typography title card transition.`,
-        productionBrief: `Equipment: Arri Alexa / Sony FX3 with anamorphic lenses. Lighting: High-contrast cyan/magenta rim lighting. Color grade: Kodak 5219 film emulation.`,
-        status: 'draft',
-        createdAt: new Date().toISOString()
-      };
+    } catch (error) {
+      throw error;
     }
   },
 
@@ -96,7 +83,7 @@ export const geminiService = {
     model: 'gemini-nano-banana-2.1' | 'gemini-3.1-flash-lite-image' = 'gemini-nano-banana-2.1'
   ): Promise<{ imageUrl: string; caption?: string; modelUsed: string }> {
     const uid = auth.currentUser?.uid;
-    const res = await fetch('/api/ai/image-generate', {
+    const res = await apiFetch('/api/ai/image-generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, aspectRatio, imageSize, model, uid })
@@ -115,16 +102,20 @@ export const geminiService = {
     prompt: string,
     imageBase64: string,
     mimeType = 'image/png',
-    aspectRatio: '1:1' | '9:16' | '16:9' = '1:1'
+    aspectRatio: '1:1' | '9:16' | '16:9' | '4:3' | '3:4' = '1:1',
+    model: 'gemini-nano-banana-2.1' | 'gemini-3.1-flash-lite-image' = 'gemini-nano-banana-2.1',
+    imageSize: '1K' | '2K' = '1K'
   ): Promise<{ imageUrl: string; caption?: string; modelUsed: string }> {
     const uid = auth.currentUser?.uid;
-    const res = await fetch('/api/ai/image-edit', {
+    const res = await apiFetch('/api/ai/image-edit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt,
         image: { data: imageBase64, mimeType },
         aspectRatio,
+        model,
+        imageSize,
         uid
       })
     });
@@ -143,11 +134,12 @@ export const geminiService = {
     image?: { data: string; mimeType: string };
     aspectRatio?: '16:9' | '9:16';
     resolution?: '720p' | '1080p';
+    model?: 'veo-3.1-generate-preview' | 'veo-3.1-fast-generate-preview' | 'veo-3.1-lite-generate-preview';
   }): Promise<{ operationName: string; model: string; aspectRatio: string }> {
     const uid = auth.currentUser?.uid;
-    const res = await fetch('/api/ai/video-generate', {
+    const res = await apiFetch('/api/ai/video-generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
       body: JSON.stringify({ ...params, uid })
     });
 
@@ -159,64 +151,65 @@ export const geminiService = {
     return await res.json();
   },
 
-  async checkVideoStatus(operationName: string): Promise<{ done: boolean; status: string; progress?: number }> {
-    const res = await fetch('/api/ai/video-status', {
+  async checkVideoStatus(operationName: string): Promise<{ done: boolean; status: string; progress?: number; error?: string }> {
+    const res = await apiFetch('/api/ai/video-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ operationName })
     });
 
-    if (!res.ok) return { done: false, status: 'CHECKING' };
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Could not check video status');
+    }
     return await res.json();
   },
 
   async downloadVideo(operationName: string): Promise<string> {
-    const res = await fetch('/api/ai/video-download', {
+    const res = await apiFetch('/api/ai/video-download', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ operationName })
     });
 
-    if (res.headers.get('content-type')?.includes('application/json')) {
-      const json = await res.json();
-      return json.videoUrl;
-    }
-
-    const blob = await res.blob();
-    return URL.createObjectURL(blob);
+    const data = await res.json();
+    if (!res.ok || !data.videoUrl) throw new Error(data.error || 'Video is not ready');
+    return data.videoUrl;
   },
 
   // 5. GOOGLE SEARCH GROUNDING (gemini-3.5-flash with googleSearch)
   async searchGrounding(query: string): Promise<{ answer: string; sources: GroundingSource[]; modelUsed: string }> {
     const uid = auth.currentUser?.uid;
-    const res = await fetch('/api/ai/search-grounding', {
+    const res = await apiFetch('/api/ai/search-grounding', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, uid })
     });
 
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'AI request failed');
     return {
-      answer: data.answer || data.fallbackAnswer || '',
+      answer: data.answer || '',
       sources: data.sources || [],
-      modelUsed: data.modelUsed || 'gemini-3.5-flash'
+      modelUsed: data.modelUsed || 'gemini-3.8-flash'
     };
   },
 
   // 6. GOOGLE MAPS GROUNDING (gemini-3.5-flash with googleMaps)
   async mapsGrounding(query: string, latLng?: { latitude: number; longitude: number }): Promise<{ answer: string; places: GroundingSource[]; modelUsed: string }> {
     const uid = auth.currentUser?.uid;
-    const res = await fetch('/api/ai/maps-grounding', {
+    const res = await apiFetch('/api/ai/maps-grounding', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, latLng, uid })
     });
 
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'AI request failed');
     return {
-      answer: data.answer || data.fallbackAnswer || '',
+      answer: data.answer || '',
       places: data.places || [],
-      modelUsed: data.modelUsed || 'gemini-3.5-flash'
+      modelUsed: data.modelUsed || 'gemini-3.8-flash'
     };
   },
 
@@ -227,7 +220,7 @@ export const geminiService = {
     modelTier: 'complex' | 'general' | 'fast' = 'general'
   ): Promise<{ reply: string; modelUsed: string }> {
     const uid = auth.currentUser?.uid;
-    const res = await fetch('/api/ai/chat', {
+    const res = await apiFetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, systemInstruction, modelTier, uid })
@@ -248,7 +241,7 @@ export const geminiService = {
     prompt?: string
   ): Promise<{ transcription: string; modelUsed: string }> {
     const uid = auth.currentUser?.uid;
-    const res = await fetch('/api/ai/transcribe', {
+    const res = await apiFetch('/api/ai/transcribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -273,7 +266,7 @@ export const geminiService = {
     image?: { data: string; mimeType: string }
   ): Promise<{ audioUrl: string; lyrics?: string; modelUsed: string }> {
     const uid = auth.currentUser?.uid;
-    const res = await fetch('/api/ai/generate-music', {
+    const res = await apiFetch('/api/ai/generate-music', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, mode, image, uid })
@@ -320,37 +313,12 @@ export const geminiService = {
   }): Promise<{ healthScore: number; riskLevel: 'low' | 'medium' | 'high'; insights: string[]; recommendations: string[] }> {
     const uid = auth.currentUser?.uid;
 
-    try {
-      const res = await fetch('/api/ai/analyze-health', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...params,
-          uid
-        })
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        return json.data;
-      }
-    } catch (e) {
-      console.warn("AI Project health analysis server call error:", e);
-    }
-
-    const ratio = params.milestonesTotal > 0 ? (params.milestonesCompleted / params.milestonesTotal) : 0.8;
-    const score = Math.round(ratio * 40 + 55);
-    return {
-      healthScore: Math.min(score, 98),
-      riskLevel: score > 75 ? 'low' : score > 50 ? 'medium' : 'high',
-      insights: [
-        `Active pipeline in ${params.stage.replace('_', ' ')} phase.`,
-        `${params.milestonesCompleted} of ${params.milestonesTotal} milestones cleared.`
-      ],
-      recommendations: [
-        'Verify equipment readiness with assigned studio or creator crew.',
-        'Review raw draft cuts before final color master export.'
-      ]
-    };
+    const res = await apiFetch('/api/ai/analyze-health', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...params, uid })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Project analysis failed');
+    return data.data;
   }
 };

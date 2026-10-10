@@ -1,3 +1,5 @@
+import { auth } from '../lib/firebase';
+const storageKey = (key: string) => `${key}:${auth.currentUser?.uid || 'signed_out'}`;
 import { 
   DepartmentTeam, 
   Employee, 
@@ -539,7 +541,7 @@ export const teamHubService = {
   // Departments
   getDepartments(): DepartmentTeam[] {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.TEAMS);
+      const saved = localStorage.getItem(storageKey(STORAGE_KEYS.TEAMS));
       if (saved) {
         const parsed: DepartmentTeam[] = JSON.parse(saved);
         // Ensure backwards compatibility with newly added fields
@@ -556,7 +558,7 @@ export const teamHubService = {
   },
 
   saveDepartments(departments: DepartmentTeam[]) {
-    localStorage.setItem(STORAGE_KEYS.TEAMS, JSON.stringify(departments));
+    localStorage.setItem(storageKey(STORAGE_KEYS.TEAMS), JSON.stringify(departments));
   },
 
   updateDepartment(departmentId: string, updates: Partial<DepartmentTeam>): DepartmentTeam[] {
@@ -650,7 +652,7 @@ export const teamHubService = {
   // Employees
   getEmployees(): Employee[] {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.EMPLOYEES);
+      const saved = localStorage.getItem(storageKey(STORAGE_KEYS.EMPLOYEES));
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.warn('Failed to parse saved employees:', e);
@@ -659,7 +661,7 @@ export const teamHubService = {
   },
 
   saveEmployees(employees: Employee[]) {
-    localStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(employees));
+    localStorage.setItem(storageKey(STORAGE_KEYS.EMPLOYEES), JSON.stringify(employees));
   },
 
   addEmployee(empData: Omit<Employee, 'id' | 'completedTasksCount'>): Employee {
@@ -720,7 +722,7 @@ export const teamHubService = {
   // Approvals
   getApprovals(): ExecutiveApprovalRequest[] {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.APPROVALS);
+      const saved = localStorage.getItem(storageKey(STORAGE_KEYS.APPROVALS));
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.warn('Failed to parse saved approvals:', e);
@@ -729,7 +731,7 @@ export const teamHubService = {
   },
 
   saveApprovals(approvals: ExecutiveApprovalRequest[]) {
-    localStorage.setItem(STORAGE_KEYS.APPROVALS, JSON.stringify(approvals));
+    localStorage.setItem(storageKey(STORAGE_KEYS.APPROVALS), JSON.stringify(approvals));
   },
 
   decideApproval(
@@ -798,7 +800,7 @@ export const teamHubService = {
   // Department Tasks
   getDepartmentTasks(): DepartmentTaskItem[] {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.TASKS);
+      const saved = localStorage.getItem(storageKey(STORAGE_KEYS.TASKS));
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.warn('Failed to parse department tasks:', e);
@@ -807,7 +809,7 @@ export const teamHubService = {
   },
 
   saveDepartmentTasks(tasks: DepartmentTaskItem[]) {
-    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
+    localStorage.setItem(storageKey(STORAGE_KEYS.TASKS), JSON.stringify(tasks));
   },
 
   updateTaskStage(taskId: string, stage: DepartmentTaskItem['stage']): DepartmentTaskItem[] {
@@ -858,7 +860,7 @@ export const teamHubService = {
   // Activity Logs
   getActivityLogs(): ManagerActivityLog[] {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.ACTIVITY);
+      const saved = localStorage.getItem(storageKey(STORAGE_KEYS.ACTIVITY));
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.warn('Failed to parse activity logs:', e);
@@ -867,7 +869,7 @@ export const teamHubService = {
   },
 
   saveActivityLogs(logs: ManagerActivityLog[]) {
-    localStorage.setItem(STORAGE_KEYS.ACTIVITY, JSON.stringify(logs.slice(0, 50)));
+    localStorage.setItem(storageKey(STORAGE_KEYS.ACTIVITY), JSON.stringify(logs.slice(0, 50)));
   },
 
   addActivityLog(log: Omit<ManagerActivityLog, 'id' | 'timestamp'>) {
@@ -885,7 +887,7 @@ export const teamHubService = {
   // Isolated Chat Histories
   getAgentChatHistories(): Record<string, Array<{ role: 'user' | 'agent'; text: string; timestamp?: string; sources?: Array<{ title: string; uri: string }> }>> {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.AGENT_CHATS);
+      const saved = localStorage.getItem(storageKey(STORAGE_KEYS.AGENT_CHATS));
       if (saved) {
         const parsed = JSON.parse(saved);
         // Ensure all default agents exist
@@ -901,7 +903,7 @@ export const teamHubService = {
   },
 
   saveAgentChatHistories(histories: Record<string, Array<any>>) {
-    localStorage.setItem(STORAGE_KEYS.AGENT_CHATS, JSON.stringify(histories));
+    localStorage.setItem(storageKey(STORAGE_KEYS.AGENT_CHATS), JSON.stringify(histories));
   },
 
   getMessagesForAgent(agentId: string) {

@@ -1,0 +1,8 @@
+{
+  "firestore": [{
+    "database": "ai-studio-remixonlycreatio-df40d4e4-af6e-4162-91b6-f536149ec519",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }],
+  "storage": { "rules": "storage.rules" }
+}
