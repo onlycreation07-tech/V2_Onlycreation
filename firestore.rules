@@ -34,6 +34,82 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
     }
 
+    // Helper functions for Workspace RBAC
+    function isWorkspaceMember(wsId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/workspaces/$(wsId)/members/$(request.auth.uid));
+    }
+    function getWorkspaceRole(wsId) {
+      return get(/databases/$(database)/documents/workspaces/$(wsId)/members/$(request.auth.uid)).data.role;
+    }
+    function isWorkspaceAdminOrOwner(wsId) {
+      return isSignedIn() && (
+        getWorkspaceRole(wsId) == 'owner' || 
+        getWorkspaceRole(wsId) == 'admin' ||
+        isAdmin()
+      );
+    }
+
+    // --- Workspaces (Team Hub Multi-Tenancy & Roles) ---
+    match /workspaces/{workspaceId} {
+      allow read: if isSignedIn() && (isWorkspaceMember(workspaceId) || isAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if isSignedIn() && incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && (isWorkspaceAdminOrOwner(workspaceId) || resource.data.ownerId == request.auth.uid);
+      allow delete: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
+
+      // Members Subcollection
+      match /members/{memberId} {
+        allow read: if isSignedIn() && (isWorkspaceMember(workspaceId) || request.auth.uid == memberId || isAdmin());
+        allow create: if isSignedIn();
+        allow update: if isSignedIn() && (request.auth.uid == memberId || isWorkspaceAdminOrOwner(workspaceId));
+        allow delete: if isSignedIn() && (request.auth.uid == memberId || isWorkspaceAdminOrOwner(workspaceId));
+      }
+
+      // Channels Subcollection
+      match /channels/{channelId} {
+        allow read: if isSignedIn() && isWorkspaceMember(workspaceId) && (
+          resource.data.type != 'private' || 
+          resource.data.createdById == request.auth.uid ||
+          (resource.data.memberIds != null && request.auth.uid in resource.data.memberIds) ||
+          isWorkspaceAdminOrOwner(workspaceId)
+        );
+        allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+        allow update: if isSignedIn() && (
+          resource.data.createdById == request.auth.uid || 
+          isWorkspaceAdminOrOwner(workspaceId)
+        );
+        allow delete: if isSignedIn() && (
+          resource.data.createdById == request.auth.uid || 
+          isWorkspaceAdminOrOwner(workspaceId)
+        );
+
+        // Messages Subcollection
+        match /messages/{messageId} {
+          allow read: if isSignedIn() && isWorkspaceMember(workspaceId);
+          allow create: if isSignedIn() && isWorkspaceMember(workspaceId) && incoming().senderId == request.auth.uid;
+          allow update: if isSignedIn() && isWorkspaceMember(workspaceId) && (
+            resource.data.senderId == request.auth.uid || 
+            incoming().diff(resource.data).affectedKeys().hasOnly(['reactions', 'isPinned', 'pinnedBy', 'replyCount', 'lastReplyAt']) ||
+            isWorkspaceAdminOrOwner(workspaceId)
+          );
+          allow delete: if isSignedIn() && (
+            resource.data.senderId == request.auth.uid || 
+            isWorkspaceAdminOrOwner(workspaceId)
+          );
+        }
+      }
+
+      // Tasks Subcollection
+      match /tasks/{taskId} {
+        allow read: if isSignedIn() && isWorkspaceMember(workspaceId);
+        allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+        allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
+        allow delete: if isSignedIn() && (
+          resource.data.createdByUserId == request.auth.uid || 
+          isWorkspaceAdminOrOwner(workspaceId)
+        );
+      }
+    }
+
     // --- Projects ---
     match /projects/{projectId} {
       allow create: if isSignedIn();

@@ -150,6 +150,16 @@ export default function AppDrawer({
             </button>
 
             <button
+              onClick={() => handleSelectNav('team-hub')}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                currentView === 'team-hub' ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <MessageSquare size={15} className="text-sleek-violet" />
+              <span>Company Chat</span>
+            </button>
+
+            <button
               onClick={() => handleSelectNav('agents')}
               className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
                 currentView === 'agents' ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'

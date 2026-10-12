@@ -1,4 +1,6 @@
-export type View = 'chat' | 'studio' | 'agents' | 'projects' | 'profile' | 'admin' | 'home' | 'create' | 'studios' | 'billboards' | 'dispatch' | 'partner' | 'calendar' | 'library';
+export type View = 'chat' | 'studio' | 'agents' | 'team-hub' | 'projects' | 'profile' | 'admin' | 'home' | 'create' | 'studios' | 'billboards' | 'dispatch' | 'partner' | 'calendar' | 'library';
+
+export * from './teamHub';
 
 export interface DispatchBooking {
   id?: string;

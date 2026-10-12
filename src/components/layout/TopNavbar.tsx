@@ -1,5 +1,4 @@
-import React from 'react';
-import { Sparkles, Menu, Plus, User, Bot, Film } from 'lucide-react';
+import { Sparkles, Menu, Plus, User, Bot, Film, MessageSquare } from 'lucide-react';
 import { View, BrandProfile } from '../../types';
 
 interface TopNavbarProps {
@@ -69,6 +68,18 @@ export default function TopNavbar({
         </button>
 
         <button
+          onClick={() => onViewChange('team-hub')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-colors flex items-center gap-1.5 ${
+            isPrimary('team-hub')
+              ? 'bg-sleek-violet text-white shadow-xs'
+              : 'text-white/60 hover:text-white'
+          }`}
+        >
+          <span>Company Chat</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-400" title="Real-time Workspace Active" />
+        </button>
+
+        <button
           onClick={() => onViewChange('agents')}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-colors flex items-center gap-1.5 ${
             isPrimary('agents')
@@ -83,6 +94,18 @@ export default function TopNavbar({
 
       {/* Zone 3: Primary Actions */}
       <div className="flex items-center gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={() => onViewChange('team-hub')}
+          className="p-1.5 md:px-2.5 md:py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/80 hover:text-white transition-colors flex items-center gap-1.5 border border-white/5 relative"
+          title="Company Chat & Channels"
+          aria-label="Open Company Chat"
+        >
+          <MessageSquare size={14} className="text-sleek-violet" />
+          <span className="text-xs font-medium hidden lg:inline">Chat</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+        </button>
+
         <button
           onClick={onNewChat}
           className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition-colors whitespace-nowrap shrink-0"

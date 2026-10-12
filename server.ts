@@ -56,6 +56,65 @@ import {
   handleGetTeamMessages,
   handleSendTeamMessage
 } from './server/controllers/agentController';
+import {
+  handleGetWorkspaces,
+  handleCreateWorkspace,
+  handleJoinWorkspace,
+  handleGetWorkspaceMembers,
+  handleUpdateMemberRole,
+  handleGetChannels,
+  handleCreateChannel,
+  handleGetMessages,
+  handleSendMessage,
+  handleToggleReaction,
+  handleTogglePin,
+  handleGetThreadReplies,
+  handleSearchMessages,
+  handleCreateTaskFromMessage,
+  handleGetTasks,
+  handleUploadAttachment,
+  handleGetAttachment,
+  setupTeamHubWebSocket,
+  getChannelMessages,
+  getChannelById,
+  getWorkspaceById,
+  getWorkspaceChannels
+} from './server/controllers/teamHubController';
+import {
+  handleSummarizeChannel,
+  handleGenerateDigest,
+  handleDraftReply,
+  handleToggleChannelAi,
+  handleGetPreferenceProfile,
+  handleUpdatePreferenceProfile,
+  handleOptInHistoryLearning,
+  handleDeletePreferenceProfile,
+  handleGetAiControls,
+  handleUpdateAiControls,
+  handleClarifyChannel,
+  handleGetReminders,
+  handleCreateReminder,
+  handleTriggerReminder,
+  handleCancelReminder
+} from './server/controllers/teamHubAiController';
+import {
+  handleGetDelegationRules,
+  handleCreateDelegationRule,
+  handleToggleDelegationRule,
+  handleGetDelegationAuditLogs,
+  handleReviewDelegatedAction,
+  handleExecuteDelegatedReply,
+  handleCheckInAttendance,
+  handleCheckOutAttendance,
+  handleGetAttendanceHistory,
+  handleRequestAttendanceCorrection,
+  handleReviewAttendanceCorrection,
+  handleGetLeaveRequests,
+  handleCreateLeaveRequest,
+  handleReviewLeaveRequest,
+  handleGetWorkloadDashboard,
+  handleSubmitSelfReportedUpdate
+} from './server/controllers/teamHubPhase3Controller';
 
 dotenv.config();
 
@@ -2306,6 +2365,85 @@ app.post('/api/agents/notifications/mark-read', optionalAuthToken, handleMarkNot
 app.get('/api/team/messages', optionalAuthToken, handleGetTeamMessages);
 app.post('/api/team/messages', optionalAuthToken, handleSendTeamMessage);
 
+// 7. Team Hub Company Communication Workspace (Slack + Teams + WhatsApp)
+app.get('/api/workspaces', optionalAuthToken, handleGetWorkspaces);
+app.post('/api/workspaces', optionalAuthToken, handleCreateWorkspace);
+app.post('/api/workspaces/join', optionalAuthToken, handleJoinWorkspace);
+app.get('/api/workspaces/:workspaceId/members', optionalAuthToken, handleGetWorkspaceMembers);
+app.patch('/api/workspaces/:workspaceId/members/:memberId/role', optionalAuthToken, handleUpdateMemberRole);
+app.get('/api/workspaces/:workspaceId/channels', optionalAuthToken, handleGetChannels);
+app.post('/api/workspaces/:workspaceId/channels', optionalAuthToken, handleCreateChannel);
+app.get('/api/workspaces/:workspaceId/channels/:channelId/messages', optionalAuthToken, handleGetMessages);
+app.post('/api/workspaces/:workspaceId/channels/:channelId/messages', optionalAuthToken, handleSendMessage);
+app.post('/api/workspaces/:workspaceId/channels/:channelId/messages/:messageId/reactions', optionalAuthToken, handleToggleReaction);
+app.post('/api/workspaces/:workspaceId/channels/:channelId/messages/:messageId/pin', optionalAuthToken, handleTogglePin);
+app.get('/api/workspaces/:workspaceId/channels/:channelId/messages/:messageId/thread', optionalAuthToken, handleGetThreadReplies);
+app.get('/api/workspaces/:workspaceId/search', optionalAuthToken, handleSearchMessages);
+app.post('/api/workspaces/:workspaceId/tasks', optionalAuthToken, handleCreateTaskFromMessage);
+app.get('/api/workspaces/:workspaceId/tasks', optionalAuthToken, handleGetTasks);
+app.post('/api/team-hub/attachments', optionalAuthToken, handleUploadAttachment);
+app.get('/api/team-hub/attachments/:fileId', handleGetAttachment);
+
+// 8. Phase 2: Team Hub AI Assistant & Preference Profiles
+app.post('/api/workspaces/:workspaceId/channels/:channelId/ai/summarize', optionalAuthToken, (req, res) => {
+  return handleSummarizeChannel(req, res, getChannelMessages, getChannelById, getWorkspaceById);
+});
+app.get('/api/workspaces/:workspaceId/ai/digest', optionalAuthToken, (req, res) => {
+  return handleGenerateDigest(req, res, getChannelMessages, getWorkspaceChannels, getWorkspaceById);
+});
+app.post('/api/workspaces/:workspaceId/channels/:channelId/ai/draft-reply', optionalAuthToken, (req, res) => {
+  return handleDraftReply(req, res, getChannelMessages);
+});
+app.post('/api/workspaces/:workspaceId/channels/:channelId/ai/toggle', optionalAuthToken, (req, res) => {
+  return handleToggleChannelAi(req, res, getChannelById);
+});
+app.get('/api/workspaces/:workspaceId/preferences', optionalAuthToken, handleGetPreferenceProfile);
+app.put('/api/workspaces/:workspaceId/preferences', optionalAuthToken, handleUpdatePreferenceProfile);
+app.post('/api/workspaces/:workspaceId/preferences/opt-in', optionalAuthToken, handleOptInHistoryLearning);
+app.delete('/api/workspaces/:workspaceId/preferences', optionalAuthToken, handleDeletePreferenceProfile);
+
+// Granular AI Controls (5 separate toggles)
+app.get('/api/workspaces/:workspaceId/ai/controls', optionalAuthToken, (req, res) => {
+  return handleGetAiControls(req, res, getWorkspaceById);
+});
+app.put('/api/workspaces/:workspaceId/ai/controls', optionalAuthToken, (req, res) => {
+  return handleUpdateAiControls(req, res, getWorkspaceById);
+});
+
+// Clarifying Questions for Ambiguities
+app.post('/api/workspaces/:workspaceId/channels/:channelId/ai/clarify', optionalAuthToken, (req, res) => {
+  return handleClarifyChannel(req, res, getChannelMessages, getChannelById, getWorkspaceById);
+});
+
+// Configured Reminders with Deduplication Protection
+app.get('/api/workspaces/:workspaceId/reminders', optionalAuthToken, handleGetReminders);
+app.post('/api/workspaces/:workspaceId/reminders', optionalAuthToken, handleCreateReminder);
+app.post('/api/workspaces/:workspaceId/reminders/:reminderId/trigger', optionalAuthToken, handleTriggerReminder);
+app.delete('/api/workspaces/:workspaceId/reminders/:reminderId', optionalAuthToken, handleCancelReminder);
+
+// 9. Phase 3: Delegated AI Replies, Attendance & Work Progress Dashboards
+// Delegated Replies & Audit Controls
+app.get('/api/workspaces/:workspaceId/delegations/rules', optionalAuthToken, handleGetDelegationRules);
+app.post('/api/workspaces/:workspaceId/delegations/rules', optionalAuthToken, handleCreateDelegationRule);
+app.post('/api/workspaces/:workspaceId/delegations/rules/:ruleId/toggle', optionalAuthToken, handleToggleDelegationRule);
+app.get('/api/workspaces/:workspaceId/delegations/audit-logs', optionalAuthToken, handleGetDelegationAuditLogs);
+app.post('/api/workspaces/:workspaceId/delegations/audit-logs/:logId/review', optionalAuthToken, handleReviewDelegatedAction);
+app.post('/api/workspaces/:workspaceId/channels/:channelId/delegations/execute', optionalAuthToken, handleExecuteDelegatedReply);
+
+// Attendance Tracking & Shift Records
+app.post('/api/workspaces/:workspaceId/attendance/check-in', optionalAuthToken, handleCheckInAttendance);
+app.post('/api/workspaces/:workspaceId/attendance/check-out', optionalAuthToken, handleCheckOutAttendance);
+app.get('/api/workspaces/:workspaceId/attendance/history', optionalAuthToken, handleGetAttendanceHistory);
+app.post('/api/workspaces/:workspaceId/attendance/:recordId/correction', optionalAuthToken, handleRequestAttendanceCorrection);
+app.post('/api/workspaces/:workspaceId/attendance/:recordId/review-correction', optionalAuthToken, handleReviewAttendanceCorrection);
+app.get('/api/workspaces/:workspaceId/attendance/leaves', optionalAuthToken, handleGetLeaveRequests);
+app.post('/api/workspaces/:workspaceId/attendance/leaves', optionalAuthToken, handleCreateLeaveRequest);
+app.post('/api/workspaces/:workspaceId/attendance/leaves/:leaveId/review', optionalAuthToken, handleReviewLeaveRequest);
+
+// Work Progress & Transparent Productivity
+app.get('/api/workspaces/:workspaceId/workload/dashboard', optionalAuthToken, handleGetWorkloadDashboard);
+app.post('/api/workspaces/:workspaceId/workload/self-report', optionalAuthToken, handleSubmitSelfReportedUpdate);
+
 // ================= VITE DEV / STATIC SERVING & LIVE WEBSOCKET =================
 async function startServer() {
   if (isDev) {
@@ -2324,6 +2462,10 @@ async function startServer() {
   }
 
   const server = http.createServer(app);
+
+  // Initialize Team Hub Real-Time WebSocket Server
+  const teamHubWss = new WebSocketServer({ server, path: '/api/team-hub-ws' });
+  setupTeamHubWebSocket(teamHubWss);
 
   // Initialize Live Voice WebSocket Server for gemini-3.8-live
   const wss = new WebSocketServer({ server, path: '/api/live-voice' });

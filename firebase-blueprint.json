@@ -356,9 +356,124 @@
         "metadata": { "type": "object" }
       },
       "required": ["id", "uid", "type", "amount", "currency", "direction", "balanceAfter", "status", "createdAt", "createdBy"]
+    },
+    "TeamWorkspace": {
+      "title": "Company Workspace",
+      "description": "Company communication workspace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "inviteCode": { "type": "string" },
+        "settings": { "type": "object" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "ownerId"]
+    },
+    "TeamWorkspaceMember": {
+      "title": "Workspace Member",
+      "description": "User membership within a workspace with RBAC role",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "workspaceId": { "type": "string" },
+        "role": { "type": "string", "enum": ["owner", "admin", "manager", "employee", "guest"] },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "presence": { "type": "string" },
+        "lastSeenAt": { "type": "string" },
+        "joinedAt": { "type": "string" }
+      },
+      "required": ["userId", "workspaceId", "role", "displayName"]
+    },
+    "TeamWorkspaceChannel": {
+      "title": "Workspace Channel",
+      "description": "Chat channel (public, private, department, project, direct)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workspaceId": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["public", "private", "department", "project", "direct"] },
+        "topic": { "type": "string" },
+        "description": { "type": "string" },
+        "createdById": { "type": "string" },
+        "memberIds": { "type": "array" },
+        "isArchived": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "workspaceId", "name", "type", "createdById"]
+    },
+    "TeamWorkspaceMessage": {
+      "title": "Workspace Message",
+      "description": "Real-time chat message with attachments, reactions, threads",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workspaceId": { "type": "string" },
+        "channelId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string" },
+        "content": { "type": "string" },
+        "attachments": { "type": "array" },
+        "reactions": { "type": "object" },
+        "replyCount": { "type": "number" },
+        "parentMessageId": { "type": "string" },
+        "isPinned": { "type": "boolean" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "workspaceId", "channelId", "senderId", "senderName", "content", "createdAt"]
+    },
+    "TeamWorkspaceTask": {
+      "title": "Message Task",
+      "description": "Task created from a chat message",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workspaceId": { "type": "string" },
+        "channelId": { "type": "string" },
+        "messageId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "assignedToUserId": { "type": "string" },
+        "assignedToUserName": { "type": "string" },
+        "priority": { "type": "string" },
+        "status": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "workspaceId", "title", "assignedToUserId"]
     }
   },
   "firestore": {
+    "workspaces/{workspaceId}": {
+      "schema": "TeamWorkspace",
+      "description": "Company communication workspaces"
+    },
+    "workspaces/{workspaceId}/members/{memberId}": {
+      "schema": "TeamWorkspaceMember",
+      "description": "Workspace member roles and presence"
+    },
+    "workspaces/{workspaceId}/channels/{channelId}": {
+      "schema": "TeamWorkspaceChannel",
+      "description": "Channels in workspace"
+    },
+    "workspaces/{workspaceId}/channels/{channelId}/messages/{messageId}": {
+      "schema": "TeamWorkspaceMessage",
+      "description": "Messages and threads in channel"
+    },
+    "workspaces/{workspaceId}/tasks/{taskId}": {
+      "schema": "TeamWorkspaceTask",
+      "description": "Tasks created from messages"
+    },
     "wallets/{userId}": {
       "schema": "Wallet",
       "description": "Authoritative user/partner wallets (read-only for owner, server managed)"

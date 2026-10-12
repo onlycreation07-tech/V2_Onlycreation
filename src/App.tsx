@@ -13,6 +13,7 @@ import BottomNav from './components/layout/BottomNav';
 import CreationAIChat from './components/chat/CreationAIChat';
 import AIStudioSuite from './components/studio/AIStudioSuite';
 import AITeamHub from './components/agents/AITeamHub';
+import TeamHubWorkspace from './components/team-hub/TeamHubWorkspace';
 import ContentCalendarScreen from './components/calendar/ContentCalendarScreen';
 import AssetLibraryScreen from './components/library/AssetLibraryScreen';
 import ProjectsScreen from './components/projects/ProjectsScreen';
@@ -295,7 +296,7 @@ function AppContent() {
     }
   };
 
-  const isPrimaryWarmTab = ['chat', 'studio', 'agents', 'projects', 'calendar', 'library'].includes(currentView);
+  const isPrimaryWarmTab = ['chat', 'studio', 'team-hub', 'agents', 'projects', 'calendar', 'library'].includes(currentView);
 
   return (
     <div className="min-h-screen bg-sleek-black text-white font-sans selection:bg-sleek-violet selection:text-white flex flex-col">
@@ -346,7 +347,12 @@ function AppContent() {
           />
         </div>
 
-        {/* 3. Warm Tab: AI Team Hub (Keeps Ketan Google AI Search tasks running) */}
+        {/* 3. Warm Tab: Company Chat Workspace (Slack/Teams/WhatsApp) */}
+        <div className={`h-full w-full ${currentView === 'team-hub' ? 'block' : 'hidden'}`}>
+          <TeamHubWorkspace />
+        </div>
+
+        {/* 4. Warm Tab: AI Team Hub (Keeps Ketan Google AI Search tasks running) */}
         <div className={`h-full w-full ${currentView === 'agents' ? 'block' : 'hidden'}`}>
           <AITeamHub
             brandProfile={brandProfile}

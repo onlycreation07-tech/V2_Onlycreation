@@ -1,4 +1,4 @@
-import { Sparkles, Camera, Bot, FolderOpen, User, ShieldCheck } from 'lucide-react';
+import { Sparkles, Camera, Bot, MessageSquare, FolderOpen, User, ShieldCheck } from 'lucide-react';
 import { View } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 
@@ -13,7 +13,8 @@ export default function BottomNav({ currentView, onViewChange }: BottomNavProps)
   const navItems: { id: View; icon: any; label: string }[] = [
     { id: 'chat', icon: Sparkles, label: 'Creation AI' },
     { id: 'studio', icon: Camera, label: 'Studio' },
-    { id: 'agents', icon: Bot, label: 'Team Hub' },
+    { id: 'team-hub', icon: MessageSquare, label: 'Chat Hub' },
+    { id: 'agents', icon: Bot, label: 'AI Agents' },
     { id: 'projects', icon: FolderOpen, label: 'Projects' },
     { id: 'profile', icon: User, label: 'Profile' },
   ];
