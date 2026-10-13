@@ -44,7 +44,7 @@ export default function TopNavbar({
       </div>
 
       {/* Zone 2: Primary 3-Section Nav Links */}
-      <nav className="hidden sm:flex items-center gap-1 bg-sleek-zinc px-1.5 py-1 rounded-xl border border-white/5 shrink-0">
+      <nav className="hidden sm:flex items-center gap-1 bg-sleek-zinc px-1.5 py-1 rounded-xl border border-white/5 shrink-0 overflow-x-auto hide-scrollbar">
         <button
           onClick={() => onViewChange('chat')}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
@@ -54,6 +54,29 @@ export default function TopNavbar({
           }`}
         >
           Creation AI
+        </button>
+
+        <button
+          onClick={() => onViewChange('ad-wizard')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-colors flex items-center gap-1 ${
+            isPrimary('ad-wizard')
+              ? 'bg-sleek-violet text-white shadow-xs'
+              : 'text-white/60 hover:text-white'
+          }`}
+        >
+          <span>Create an Ad</span>
+        </button>
+
+        <button
+          onClick={() => onViewChange('agents')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-colors flex items-center gap-1.5 ${
+            isPrimary('agents')
+              ? 'bg-sleek-violet text-white shadow-xs'
+              : 'text-white/60 hover:text-white'
+          }`}
+        >
+          <span>AI Team Hub</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-400" title="AI Managers & Delegations Active" />
         </button>
 
         <button
@@ -76,19 +99,6 @@ export default function TopNavbar({
           }`}
         >
           <span>Company Chat</span>
-          <span className="w-2 h-2 rounded-full bg-emerald-400" title="Real-time Workspace Active" />
-        </button>
-
-        <button
-          onClick={() => onViewChange('agents')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-colors flex items-center gap-1.5 ${
-            isPrimary('agents')
-              ? 'bg-sleek-violet text-white shadow-xs'
-              : 'text-white/60 hover:text-white'
-          }`}
-        >
-          <span>AI Team Hub</span>
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="CEO Approvals & Management Active" />
         </button>
       </nav>
 

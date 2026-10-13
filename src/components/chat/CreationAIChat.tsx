@@ -45,12 +45,15 @@ interface CreationAIChatProps {
   onOpenAgents: (agentId?: AIAgentId) => void;
   onOpenProjects: () => void;
   onConvertToProject?: (creative: AdCreative) => void;
+  onOpenAdWizard?: () => void;
+  onOpenContentEngine?: (mode?: string) => void;
+  onOpenTeamHub?: () => void;
 }
 
 const STARTER_PROMPTS = [
   {
     title: 'Create an Ad',
-    subtitle: 'Generate cinematic product videos & 9:16 Instagram Reels',
+    subtitle: 'Guided advertising brief, hook synthesis & studio generation',
     icon: Film,
     accent: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
     prompt: 'Create a premium 20-second luxury perfume commercial with cinematic lighting, a studio backdrop, an elegant voiceover, and Instagram Reel formatting.'
@@ -64,14 +67,14 @@ const STARTER_PROMPTS = [
   },
   {
     title: 'AI Team Hub',
-    subtitle: 'Collaborate with your specialized AI bots',
+    subtitle: 'Coordinating project manager, specialist bots & employee tasks',
     icon: Bot,
     accent: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
     prompt: 'Assign tasks to Ketan for 5 viral hooks with Google Search grounding, Nova for visual storyboards, and Echo for captions for our brand launch.'
   },
   {
-    title: 'Content Engine',
-    subtitle: 'Build Shorts, Reels, and YouTube faceless video packages',
+    title: 'Flow Video Studio',
+    subtitle: 'Google Flow studio in AI Studio: generate, edit, clip & analyze',
     icon: Video,
     accent: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
     prompt: 'Build a faceless 3-part YouTube Shorts series on tech minimalism with script, visual prompts, and voiceover timing.'
@@ -83,7 +86,10 @@ export default function CreationAIChat({
   onOpenStudio,
   onOpenAgents,
   onOpenProjects,
-  onConvertToProject
+  onConvertToProject,
+  onOpenAdWizard,
+  onOpenContentEngine,
+  onOpenTeamHub
 }: CreationAIChatProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<CreationAIChatMessage[]>([]);
@@ -358,7 +364,22 @@ export default function CreationAIChat({
                 return (
                   <button
                     key={idx}
-                    onClick={() => handleSendMessage(card.prompt)}
+                    onClick={() => {
+                      if (card.title === 'Create an Ad') {
+                        if (onOpenAdWizard) return onOpenAdWizard();
+                        return onOpenStudio('campaign', card.prompt);
+                      }
+                      if (card.title === 'Generate Images') {
+                        return onOpenStudio('images', card.prompt);
+                      }
+                      if (card.title === 'Flow Video Studio' || card.title === 'Flow Video' || card.title === 'Content Engine') {
+                        return onOpenStudio('veo_video', card.prompt);
+                      }
+                      if (card.title === 'AI Team Hub') {
+                        if (onOpenTeamHub) return onOpenTeamHub();
+                        return onOpenAgents();
+                      }
+                    }}
                     className="p-4 rounded-xl bg-sleek-zinc border border-white/5 hover:border-sleek-violet/40 hover:bg-white/[0.03] transition-all text-left group flex flex-col justify-between"
                   >
                     <div className="flex items-start gap-3 mb-2">
@@ -374,8 +395,8 @@ export default function CreationAIChat({
                         </p>
                       </div>
                     </div>
-                    <span className="text-[11px] text-white/40 flex items-center gap-1 group-hover:text-white/80 transition-colors mt-2">
-                      Try prompt <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
+                    <span className="text-[11px] text-white/40 flex items-center gap-1 group-hover:text-sleek-violet transition-colors mt-2 font-medium">
+                      Launch workflow <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
                     </span>
                   </button>
                 );
@@ -464,6 +485,26 @@ export default function CreationAIChat({
 
                       {/* Ad Plan Actions */}
                       <div className="pt-2 flex flex-wrap items-center gap-2">
+                        {onOpenAdWizard && (
+                          <button
+                            onClick={onOpenAdWizard}
+                            className="px-3.5 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-xs font-semibold transition-all flex items-center gap-1.5 shadow-md hover:brightness-110"
+                          >
+                            <Zap size={13} />
+                            Launch Guided Ad Wizard
+                          </button>
+                        )}
+
+                        {onOpenContentEngine && (
+                          <button
+                            onClick={() => onOpenContentEngine('generate')}
+                            className="px-3.5 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-medium transition-colors flex items-center gap-1.5"
+                          >
+                            <Video size={13} />
+                            Open in Content Engine
+                          </button>
+                        )}
+
                         <button
                           onClick={() => handleApprovePlan(msg.adPlan!)}
                           className="px-3.5 py-2 rounded-lg bg-sleek-violet hover:bg-sleek-violet/90 text-white text-xs font-medium transition-colors flex items-center gap-1.5 shadow-sm"

@@ -26,6 +26,7 @@ import AudioTranscriber from '../create/AudioTranscriber';
 import AIProductionBriefEngine from '../create/AIProductionBriefEngine';
 import LiveVoiceRoom from '../create/LiveVoiceRoom';
 import CreateScreen from '../create/CreateScreen';
+import ContentEngineWorkspace from '../content-engine/ContentEngineWorkspace';
 import { backgroundTaskService, BackgroundTask } from '../../services/backgroundTaskService';
 
 interface AIStudioSuiteProps {
@@ -49,7 +50,7 @@ export type StudioSectionTab =
 const STUDIO_TABS: Array<{ id: StudioSectionTab; label: string; icon: any; desc: string }> = [
   { id: 'campaign', label: 'Campaign Engine', icon: Sparkles, desc: 'Full-funnel commercial concepts & scripts' },
   { id: 'images', label: 'Image Studio', icon: Camera, desc: 'Studio photography & commercial visual assets' },
-  { id: 'veo_video', label: 'Veo Video Studio', icon: Video, desc: 'Cinematic video generation with Google Veo' },
+  { id: 'veo_video', label: 'Flow Video Studio', icon: Video, desc: 'Google Flow video workspace: generate, edit, clip & analyze' },
   { id: 'music', label: 'Music Studio', icon: Music, desc: 'Soundtrack & soundtrack mood generation' },
   { id: 'audio_voice', label: 'Audio & Voice', icon: Mic, desc: 'Speech narration & audio transcription' },
   { id: 'brief_engine', label: 'Brief Engine', icon: FileText, desc: 'Technical studio briefs, lighting & shot lists' },
@@ -78,7 +79,7 @@ export default function AIStudioSuite({
   const recentCompletedTasks = studioTasks.filter(t => t.status === 'COMPLETED').slice(0, 2);
 
   return (
-    <div className="flex flex-col h-full max-w-5xl mx-auto px-4 py-3">
+    <div className={`flex flex-col h-full ${activeTab === 'veo_video' ? 'max-w-none w-full px-2 py-1' : 'max-w-5xl mx-auto px-4 py-3'}`}>
       {/* Studio Header & Navigation Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/5">
         <div>
@@ -193,9 +194,12 @@ export default function AIStudioSuite({
           />
         </div>
 
-        {/* 3. Veo Video Studio (Preserved and keeps rendering in background) */}
-        <div className={activeTab === 'veo_video' ? 'block' : 'hidden'}>
-          <VeoVideoStudio />
+        {/* 3. Flow Video Studio (Google Flow video workspace: generate, edit, clip, analyze) */}
+        <div className={`h-full ${activeTab === 'veo_video' ? 'block' : 'hidden'}`}>
+          <ContentEngineWorkspace 
+            brandProfile={brandProfile}
+            onConvertToProject={onConvertToProject}
+          />
         </div>
 
         {/* 4. Music Studio */}

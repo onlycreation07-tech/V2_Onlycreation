@@ -140,13 +140,23 @@ export default function AppDrawer({
             </button>
 
             <button
+              onClick={() => handleSelectNav('ad-wizard')}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                currentView === 'ad-wizard' ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <Zap size={15} className="text-violet-400" />
+              <span>Create an Ad (Guided Brief)</span>
+            </button>
+
+            <button
               onClick={() => handleSelectNav('studio')}
               className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
                 currentView === 'studio' ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'
               }`}
             >
               <ImageIcon size={15} className="text-pink-400" />
-              <span>AI Studio Suite</span>
+              <span>AI Studio (with Flow Video)</span>
             </button>
 
             <button

@@ -21,7 +21,8 @@ import {
   Activity,
   Layers,
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -46,11 +47,12 @@ import DepartmentTeamsRoster from './DepartmentTeamsRoster';
 import DepartmentTaskBoard from './DepartmentTaskBoard';
 import ExecutiveBriefingView from './ExecutiveBriefingView';
 import IsolatedAgentChat from './IsolatedAgentChat';
+import GoalCoordinatorView from './GoalCoordinatorView';
 
 interface AITeamHubProps {
   brandProfile: BrandProfile;
   initialAgentId?: AIAgentId;
-  initialSubTab?: 'approvals' | 'teams' | 'board' | 'briefing' | 'direct';
+  initialSubTab?: 'coordinator' | 'board' | 'teams' | 'approvals' | 'briefing' | 'direct';
   onNavigateToStudio?: (tab?: string, prompt?: string) => void;
   onNavigateToChat?: (prompt?: string) => void;
 }
@@ -58,14 +60,14 @@ interface AITeamHubProps {
 export default function AITeamHub({
   brandProfile,
   initialAgentId = 'ketan-growth',
-  initialSubTab = 'approvals',
+  initialSubTab = 'coordinator',
   onNavigateToStudio,
   onNavigateToChat
 }: AITeamHubProps) {
   const { user } = useAuth();
 
-  // Active Hub Tab
-  const [activeTab, setActiveTab] = useState<'approvals' | 'teams' | 'board' | 'briefing' | 'direct'>(initialSubTab);
+  // Active Hub Tab (Defaults to Goal Coordinator & Employee Delegator)
+  const [activeTab, setActiveTab] = useState<'coordinator' | 'board' | 'teams' | 'approvals' | 'briefing' | 'direct'>(initialSubTab);
   
   // Selected Bot for 1-on-1 direct channel
   const [selectedAgentId, setSelectedAgentId] = useState<AIAgentId>(initialAgentId);
@@ -97,10 +99,24 @@ export default function AITeamHub({
   // Count of pending executive approvals
   const pendingApprovalsCount = approvals.filter(a => a.status === 'PENDING').length;
 
-  // Sync background tasks from global service
+  // Sync background tasks from global service and auto-clean any stale tasks older than 60s
   useEffect(() => {
+    // Purge or complete any lingering tasks from previous sessions
+    const all = backgroundTaskService.getAllTasks();
+    const now = Date.now();
+    all.forEach(t => {
+      const created = t.createdAt ? new Date(t.createdAt).getTime() : 0;
+      if (t.status === 'RUNNING' && (now - created > 60000 || !created)) {
+        backgroundTaskService.updateTask(t.id, { 
+          status: 'COMPLETED', 
+          progress: 100, 
+          completedAt: new Date().toISOString() 
+        });
+      }
+    });
+
     const unsubscribe = backgroundTaskService.subscribe((allTasks) => {
-      const agentBg = allTasks.filter(b => b.type === 'agent_delegation');
+      const agentBg = allTasks.filter(b => b.type === 'agent_delegation' && b.status === 'RUNNING');
       setBgTasks(agentBg);
     });
     return unsubscribe;
@@ -302,6 +318,30 @@ export default function AITeamHub({
     setIsSyncingOps(false);
   };
 
+  const handleCommitTasksToBoard = (newTasks: any[]) => {
+    const formattedTasks: DepartmentTaskItem[] = newTasks.map((t, idx) => ({
+      id: `task-coord-${Date.now()}-${idx}`,
+      departmentId: 'dept-creative',
+      title: t.title,
+      description: t.description,
+      assignedToEmployeeId: t.assignedTo,
+      assignedEmployeeName: t.assignedName,
+      assignedByAgentId: 'nova-director' as AIAgentId,
+      assignedByAgentName: 'Nova (Lead AI Manager)',
+      priority: 'high',
+      stage: 'in_progress',
+      dueDate: t.deadline || 'This week',
+      deliverableLink: t.deliverablePreview,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }));
+
+    formattedTasks.forEach(task => teamHubService.addDepartmentTask(task));
+    setDepartmentTasks(teamHubService.getDepartmentTasks());
+    setActivityLogs(teamHubService.getActivityLogs());
+    setActiveTab('board');
+  };
+
   return (
     <div className="flex flex-col h-full max-w-6xl mx-auto px-3 sm:px-4 py-3">
       {/* Primary Header */}
@@ -319,12 +359,60 @@ export default function AITeamHub({
             </h1>
           </div>
           <p className="text-xs text-white/50">
-            Real human employees managed autonomously by Google AI agents. CEO time is saved while complex decisions route to your executive permissions queue.
+            Real human employees managed autonomously by Google AI agents. Describe any campaign goal, and your AI manager coordinates tasks and monitors completion.
           </p>
         </div>
 
         {/* Global Hub Navigation Bar */}
         <div className="flex items-center bg-sleek-zinc rounded-xl p-1 border border-white/10 shrink-0 overflow-x-auto hide-scrollbar">
+          <button
+            onClick={() => setActiveTab('coordinator')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === 'coordinator'
+                ? 'bg-sleek-violet text-white shadow-xs'
+                : 'text-white/50 hover:text-white'
+            }`}
+          >
+            <Sparkles size={14} className="text-amber-400" />
+            <span>AI Manager</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('teams')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === 'teams'
+                ? 'bg-sleek-violet text-white shadow-xs'
+                : 'text-white/50 hover:text-white'
+            }`}
+          >
+            <Users size={14} />
+            <span>Departments & Crew</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('direct')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === 'direct'
+                ? 'bg-sleek-violet text-white shadow-xs'
+                : 'text-white/50 hover:text-white'
+            }`}
+          >
+            <Bot size={14} className="text-violet-400" />
+            <span>Private CXO Chat</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('board')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === 'board'
+                ? 'bg-sleek-violet text-white shadow-xs'
+                : 'text-white/50 hover:text-white'
+            }`}
+          >
+            <Activity size={14} />
+            <span>Operations Board</span>
+          </button>
+
           <button
             onClick={() => setActiveTab('approvals')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
@@ -343,30 +431,6 @@ export default function AITeamHub({
           </button>
 
           <button
-            onClick={() => setActiveTab('teams')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-              activeTab === 'teams'
-                ? 'bg-sleek-violet text-white shadow-xs'
-                : 'text-white/50 hover:text-white'
-            }`}
-          >
-            <Users size={14} />
-            <span>Hybrid Teams</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('board')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-              activeTab === 'board'
-                ? 'bg-sleek-violet text-white shadow-xs'
-                : 'text-white/50 hover:text-white'
-            }`}
-          >
-            <Activity size={14} />
-            <span>Operations Board</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab('briefing')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === 'briefing'
@@ -377,51 +441,65 @@ export default function AITeamHub({
             <FileText size={14} />
             <span>CEO Briefing</span>
           </button>
-
-          <button
-            onClick={() => setActiveTab('direct')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-              activeTab === 'direct'
-                ? 'bg-sleek-violet text-white shadow-xs'
-                : 'text-white/50 hover:text-white'
-            }`}
-          >
-            <MessageSquare size={14} />
-            <span>1-on-1 Channels</span>
-          </button>
         </div>
       </div>
 
-      {/* Persistent Background Execution Banner (Only inside AI Team Hub) */}
-      {bgTasks.filter(b => b.status === 'RUNNING').length > 0 && (
+      {/* Persistent Background Execution Banner (Only active for current live missions < 60s) */}
+      {bgTasks.filter(b => b.status === 'RUNNING' && (Date.now() - (new Date(b.createdAt || 0).getTime() || 0) < 60000)).length > 0 && (
         <div className="my-2.5 p-3 rounded-xl bg-gradient-to-r from-purple-950/40 via-indigo-950/40 to-black/60 border border-purple-500/30 flex items-center justify-between gap-3 animate-fadeIn shrink-0">
-          <div className="flex items-center gap-2.5">
-            <span className="p-1 rounded-lg bg-purple-500/20 text-purple-300">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="p-1 rounded-lg bg-purple-500/20 text-purple-300 shrink-0">
               <RefreshCw size={13} className="animate-spin" />
             </span>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-white">
                   Autonomous Background Missions Active
                 </span>
-                <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono">
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono shrink-0">
                   WARM & PERSISTENT
                 </span>
               </div>
-              <p className="text-[11px] text-white/60">
+              <p className="text-[11px] text-white/60 truncate">
                 {bgTasks.find(b => b.status === 'RUNNING')?.title || 'Executing marketing task in background...'}
               </p>
             </div>
           </div>
-          <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1 shrink-0">
-            <Activity size={11} className="animate-pulse" />
-            Active
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => {
+                backgroundTaskService.clearAllTasks();
+                setBgTasks([]);
+              }}
+              className="px-2 py-1 rounded-md bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-[10px] font-medium transition-colors"
+            >
+              Stop & Dismiss
+            </button>
+            <button
+              onClick={() => {
+                backgroundTaskService.clearAllTasks();
+                setBgTasks([]);
+              }}
+              className="p-1 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+              title="Dismiss & Clear Background Missions"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
       )}
 
       {/* Main Tab Views Container */}
       <div className="flex-1 overflow-y-auto mt-2 pb-6 pr-0.5 hide-scrollbar">
+        {activeTab === 'coordinator' && (
+          <GoalCoordinatorView
+            brandProfile={brandProfile}
+            workspaceEmployees={employees}
+            onNavigateToStudio={onNavigateToStudio}
+            onCommitTasksToBoard={handleCommitTasksToBoard}
+          />
+        )}
+
         {activeTab === 'approvals' && (
           <ApprovalsQueue
             approvals={approvals}
@@ -439,10 +517,11 @@ export default function AITeamHub({
             onUpdateDepartmentManager={handleUpdateDepartmentManager}
             onToggleDepartmentBot={handleToggleDepartmentBot}
             onAssignDepartmentBot={handleAssignDepartmentBot}
-            onSelectAgentForChat={(agentId) => {
-              setSelectedAgentId(agentId);
-              setActiveTab('direct');
-            }}
+            agentChatHistories={agentChatHistories}
+            onSendMessage={handleSendIsolatedMessage}
+            onClearHistory={handleClearHistory}
+            isSendingMessage={isSendingMessage}
+            brandProfile={brandProfile}
           />
         )}
 

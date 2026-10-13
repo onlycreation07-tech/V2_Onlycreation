@@ -1,4 +1,4 @@
-export type View = 'chat' | 'studio' | 'agents' | 'team-hub' | 'projects' | 'profile' | 'admin' | 'home' | 'create' | 'studios' | 'billboards' | 'dispatch' | 'partner' | 'calendar' | 'library';
+export type View = 'chat' | 'studio' | 'agents' | 'team-hub' | 'projects' | 'profile' | 'admin' | 'home' | 'create' | 'studios' | 'billboards' | 'dispatch' | 'partner' | 'calendar' | 'library' | 'ad-wizard' | 'content-engine';
 
 export * from './teamHub';
 
@@ -563,5 +563,106 @@ export interface ExecutiveBriefing {
     highlight: string;
   }[];
   strategicRecommendations: string[];
+}
+
+export interface AdBriefQuestionnaire {
+  productOrService: string;
+  category: string;
+  targetCustomer: string;
+  customerProblem: string;
+  offerAndPrice: string;
+  mainBenefit: string;
+  placement: 'instagram_story' | 'instagram_feed' | 'facebook_feed' | 'youtube_landscape' | 'billboard_display' | 'tiktok_9_16';
+  actionOrCta: 'shop_now' | 'book_call' | 'claim_offer' | 'learn_more' | 'install_app' | 'get_quote';
+  language: string;
+  visualStyle: 'cinematic_bold' | 'minimalist_clean' | 'warm_lifestyle' | 'vibrant_pop' | 'luxury_editorial';
+  uploadedAssets: Array<{
+    id: string;
+    name: string;
+    url: string;
+    type: 'logo' | 'product_photo' | 'reference';
+  }>;
+  preserveProductPhotoUnchanged: boolean;
+}
+
+export interface CreativeDirection {
+  id: string;
+  directionTitle: string;
+  hookHeadline: string;
+  visualConcept: string;
+  supportingCopy: string;
+  callToAction: string;
+  recommendedColors: string[];
+  rationale: string;
+}
+
+export interface GeneratedAdResult {
+  id: string;
+  imageUrl: string;
+  creativeDirectionId: string;
+  directionTitle: string;
+  headline: string;
+  supportingCopy: string;
+  offerText: string;
+  ctaText: string;
+  placement: string;
+  aspectRatio: '9:16' | '1:1' | '16:9' | '4:5';
+  visualStyle: string;
+  headlineStyle?: {
+    fontFamily: string;
+    fontSize: number;
+    color: string;
+    positionY: number; // percentage
+  };
+  ctaStyle?: {
+    backgroundColor: string;
+    textColor: string;
+    positionY: number;
+  };
+  preservedProduct: boolean;
+  createdAt: string;
+}
+
+export interface VideoClipSegment {
+  id: string;
+  startTime: number; // seconds
+  endTime: number; // seconds
+  title: string;
+  hookRationale: string;
+  suggestedCaption: string;
+  category: 'hook' | 'insight' | 'demo' | 'call_to_action';
+  aspectRatio: '9:16' | '16:9' | '1:1';
+}
+
+export interface VideoAuditReport {
+  overallScore: number;
+  openingHookAnalysis: {
+    durationSeconds: number;
+    strength: 'strong' | 'moderate' | 'weak';
+    observation: string;
+    suggestion: string;
+  };
+  pacingAndRetention: {
+    averageCutSeconds: number;
+    observation: string;
+    suggestion: string;
+  };
+  audioAndClarity: {
+    clarityRating: string;
+    observation: string;
+    suggestion: string;
+  };
+  captionsAndAccessibility: {
+    hasLegibleCaptions: boolean;
+    observation: string;
+    suggestion: string;
+  };
+  callToActionAudit: {
+    timestamp: string;
+    observation: string;
+    suggestion: string;
+  };
+  factualObservations: string[];
+  actionableSuggestions: string[];
 }
 

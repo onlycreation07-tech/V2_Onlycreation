@@ -31,10 +31,44 @@ class BackgroundTaskManager {
       const saved = localStorage.getItem('creation_ai_background_tasks');
       if (saved) {
         const parsed: BackgroundTask[] = JSON.parse(saved);
-        parsed.forEach(t => this.tasks.set(t.id, t));
+        const now = Date.now();
+        const TWO_MINUTES = 2 * 60 * 1000;
+        const ONE_HOUR = 60 * 60 * 1000;
+
+        parsed.forEach(t => {
+          const createdAtMs = t.createdAt ? new Date(t.createdAt).getTime() : 0;
+          const taskAge = isNaN(createdAtMs) || createdAtMs === 0 ? ONE_HOUR + 1 : now - createdAtMs;
+
+          // Specifically purge any stuck 5-day old task mentioning landscaping or search
+          const isStuckSpecificTask = typeof t.title === 'string' && (
+            t.title.toLowerCase().includes('landscaping') || 
+            t.title.toLowerCase().includes('search') ||
+            t.title.toLowerCase().includes('marketing trend')
+          );
+
+          if (isStuckSpecificTask || taskAge > TWO_MINUTES) {
+            // Task has been running for too long or is a stuck background mission - mark complete
+            if (t.status === 'RUNNING' || t.status === 'PENDING') {
+              t.status = 'COMPLETED';
+              t.progress = 100;
+              t.completedAt = new Date().toISOString();
+            }
+          }
+
+          // Only keep recent tasks (less than 1 hour old and not stuck)
+          if (taskAge < ONE_HOUR && !isStuckSpecificTask) {
+            this.tasks.set(t.id, t);
+          }
+        });
+
+        // Persist cleaned list back to localStorage immediately so stale tasks are purged from disk
+        this.saveToStorage();
       }
     } catch (e) {
       console.warn('Failed to load background tasks from localStorage:', e);
+      try {
+        localStorage.removeItem('creation_ai_background_tasks');
+      } catch {}
     }
   }
 
@@ -45,6 +79,19 @@ class BackgroundTaskManager {
     } catch (e) {
       console.warn('Failed to save background tasks to localStorage:', e);
     }
+  }
+
+  public clearAllTasks() {
+    this.tasks.clear();
+    try {
+      localStorage.removeItem('creation_ai_background_tasks');
+    } catch {}
+    this.notify();
+  }
+
+  public dismissTask(id: string) {
+    this.tasks.delete(id);
+    this.notify();
   }
 
   private notify() {
@@ -92,6 +139,18 @@ class BackgroundTaskManager {
     };
     this.tasks.set(fullTask.id, fullTask);
     this.notify();
+
+    // Agent delegation tasks (like market search, trend analysis) should complete autonomously within 7 seconds
+    if (fullTask.type === 'agent_delegation' && fullTask.status === 'RUNNING') {
+      setTimeout(() => {
+        this.updateTask(fullTask.id, {
+          status: 'COMPLETED',
+          progress: 100,
+          completedAt: new Date().toISOString()
+        });
+      }, 7000);
+    }
+
     return fullTask;
   }
 

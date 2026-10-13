@@ -95,7 +95,8 @@ import {
   handleGetReminders,
   handleCreateReminder,
   handleTriggerReminder,
-  handleCancelReminder
+  handleCancelReminder,
+  handleCoordinateGoal
 } from './server/controllers/teamHubAiController';
 import {
   handleGetDelegationRules,
@@ -115,6 +116,18 @@ import {
   handleGetWorkloadDashboard,
   handleSubmitSelfReportedUpdate
 } from './server/controllers/teamHubPhase3Controller';
+import {
+  handleProposeDirections,
+  handleGenerateAd,
+  handleGenerateVariation
+} from './server/controllers/adWizardController';
+import {
+  handleTranscribeAndClip,
+  handleAnalyzeVideo,
+  handleGenerateVideo,
+  handleExportVideo,
+  handleGetVideoProjects
+} from './server/controllers/contentEngineController';
 
 dotenv.config();
 
@@ -2421,6 +2434,9 @@ app.post('/api/workspaces/:workspaceId/reminders', optionalAuthToken, handleCrea
 app.post('/api/workspaces/:workspaceId/reminders/:reminderId/trigger', optionalAuthToken, handleTriggerReminder);
 app.delete('/api/workspaces/:workspaceId/reminders/:reminderId', optionalAuthToken, handleCancelReminder);
 
+// Multi-Agent & Employee Coordinating Project Manager
+app.post('/api/team-hub/coordinate-goal', optionalAuthToken, handleCoordinateGoal);
+
 // 9. Phase 3: Delegated AI Replies, Attendance & Work Progress Dashboards
 // Delegated Replies & Audit Controls
 app.get('/api/workspaces/:workspaceId/delegations/rules', optionalAuthToken, handleGetDelegationRules);
@@ -2443,6 +2459,18 @@ app.post('/api/workspaces/:workspaceId/attendance/leaves/:leaveId/review', optio
 // Work Progress & Transparent Productivity
 app.get('/api/workspaces/:workspaceId/workload/dashboard', optionalAuthToken, handleGetWorkloadDashboard);
 app.post('/api/workspaces/:workspaceId/workload/self-report', optionalAuthToken, handleSubmitSelfReportedUpdate);
+
+// 10. Create an Ad Wizard (Interactive Creative Director & Ad Generation)
+app.post('/api/ad-wizard/propose-directions', optionalAuthToken, handleProposeDirections);
+app.post('/api/ad-wizard/generate-ad', optionalAuthToken, handleGenerateAd);
+app.post('/api/ad-wizard/variation', optionalAuthToken, handleGenerateVariation);
+
+// 11. Content Engine (Video Workspace: Generate, Edit, Clip, Analyze)
+app.post('/api/content-engine/transcribe-and-clip', optionalAuthToken, handleTranscribeAndClip);
+app.post('/api/content-engine/analyze', optionalAuthToken, handleAnalyzeVideo);
+app.post('/api/content-engine/generate', optionalAuthToken, handleGenerateVideo);
+app.post('/api/content-engine/export', optionalAuthToken, handleExportVideo);
+app.get('/api/content-engine/projects', optionalAuthToken, handleGetVideoProjects);
 
 // ================= VITE DEV / STATIC SERVING & LIVE WEBSOCKET =================
 async function startServer() {

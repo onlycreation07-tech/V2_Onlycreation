@@ -37,6 +37,7 @@ import AudioTranscriber from './AudioTranscriber';
 import DirectorChat from './DirectorChat';
 import LiveVoiceRoom from './LiveVoiceRoom';
 import AIProductionBriefEngine from './AIProductionBriefEngine';
+import ContentEngineWorkspace from '../content-engine/ContentEngineWorkspace';
 
 interface CreateScreenProps {
   onGenerated: (creative: AdCreative) => void;
@@ -174,7 +175,7 @@ Generated with OnlyCreation AI Studio Intelligence.
           </div>
           <div className="px-3 py-1 bg-gradient-to-r from-purple-500/15 to-pink-500/15 border border-purple-500/30 rounded-full flex items-center gap-1.5 shadow-sm">
             <Sparkles size={12} className="text-purple-400 animate-pulse" />
-            <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-purple-300">Gemini 3 + Veo 3</span>
+            <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-purple-300">Gemini 3 + Google Flow</span>
           </div>
         </div>
         <p className="text-white/50 text-xs">Production-grade AI media, computer vision, video, music & real-time direction.</p>
@@ -193,7 +194,7 @@ Generated with OnlyCreation AI Studio Intelligence.
             { id: 'campaign', label: 'Ad Campaign', icon: Wand2, tag: 'Director' },
             { id: 'brief_engine', label: 'AI Brief Engine', icon: Film, tag: 'Vision AI' },
             { id: 'images', label: 'Image Studio', icon: ImageIcon, tag: 'Nano Banana' },
-            { id: 'veo_video', label: 'Veo 3 Video', icon: Film, tag: 'Veo 3' },
+            { id: 'veo_video', label: 'Flow Video Studio', icon: Video, tag: 'Flow Video' },
             { id: 'music', label: 'Lyria Music', icon: Music, tag: 'Audio' },
             { id: 'transcribe', label: 'Transcribe', icon: Mic, tag: 'Speech' },
             { id: 'director_chat', label: 'Director Chat', icon: MessageSquare, tag: 'Search' },
@@ -238,7 +239,10 @@ Generated with OnlyCreation AI Studio Intelligence.
         </div>
 
         <div className={activeTab === 'veo_video' ? 'block' : 'hidden'}>
-          <VeoVideoStudio initialImage={veoPrefilledImage} />
+          <ContentEngineWorkspace 
+            brandProfile={brandProfile} 
+            onConvertToProject={onConvertToProject} 
+          />
         </div>
 
         <div className={activeTab === 'music' ? 'block' : 'hidden'}>

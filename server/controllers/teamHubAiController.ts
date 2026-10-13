@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type, Schema } from '@google/genai';
 import { AuthenticatedRequest } from '../types';
 import {
   Workspace,
@@ -767,23 +767,103 @@ export async function handleDeletePreferenceProfile(req: AuthenticatedRequest, r
 }
 
 // -------------------------------------------------------------
-// 9. BACKGROUND REMINDER RUNNER (Every 30s)
+// 10. COORDINATING PROJECT MANAGER (GOAL BREAKDOWN & MULTI-AGENT DELEGATION)
 // -------------------------------------------------------------
-setInterval(() => {
-  const now = new Date().getTime();
-  for (const [wsId, reminders] of remindersMap.entries()) {
-    for (const rem of reminders) {
-      if (rem.status === 'pending') {
-        const dueTime = new Date(rem.dueAt).getTime();
-        if (dueTime <= now && !dispatchedReminderIds.has(rem.id)) {
-          rem.status = 'sent';
-          rem.sentAt = new Date().toISOString();
-          dispatchedReminderIds.add(rem.id);
-
-          const content = `⏰ **Scheduled Reminder**: ${rem.title}${rem.notes ? `\n> ${rem.notes}` : ''}${rem.targetUserName ? `\n*(cc: @${rem.targetUserName})*` : ''}`;
-          postSystemMessageToChannel(wsId, rem.channelId, content, 'AI Reminder');
-        }
-      }
+export async function handleCoordinateGoal(req: AuthenticatedRequest, res: Response) {
+  try {
+    const { goal, brandProfile = {}, workspaceMembers = [] } = req.body;
+    if (!goal || !goal.trim()) {
+      return res.status(400).json({ error: 'Goal prompt is required.' });
     }
+
+    const availableEmployees = Array.isArray(workspaceMembers) && workspaceMembers.length > 0
+      ? workspaceMembers.map((m: any) => `${m.displayName || m.name || m.userId} (${m.role || m.title || 'Team Member'})`).join(', ')
+      : 'Arjun Das (Lead Cinematographer & Video Editor), Dev Patel (Performance Marketer), Priya Sharma (Senior Colorist), Sarah Lin (Ad Analyst)';
+
+    const systemInstruction = `You are the Lead Coordinating Project Manager at OnlyCreation Creative Production Workspace.
+You coordinate a multidisciplinary creative team comprising:
+AI SPECIALISTS:
+- Nova (Creative Director): High-level concept, visual style, storyboard directions.
+- Cleo (Copywriter): Ad copy, scripts, headlines, hook variations, captions.
+- Rex (Image Designer): Product visuals, 3D mockups, hero image assets.
+- Miles (Video Editor): Video reels, cuts, sound design, DaVinci color grading.
+- Ketan (Content Strategist): Market research, viral trends, platform distribution.
+
+REAL WORKSPACE EMPLOYEES:
+${availableEmployees}
+
+INSTRUCTIONS:
+1. Understand the goal and context.
+2. If critical information is missing, formulate 1-2 concise clarifying questions, but STILL generate an initial breakdown of tasks.
+3. Break the goal into actionable tasks.
+4. Delegate each task to the appropriate agent or real employee.
+   (For example: if the user mentions "have my editor prepare three reels", assign to the employee who is the editor or Miles).
+5. Specify deadlines, dependencies, and whether executive approval is required.
+6. Provide a natural manager briefing explaining the strategic plan.`;
+
+    const schema: Schema = {
+      type: Type.OBJECT,
+      properties: {
+        campaignTitle: { type: Type.STRING },
+        managerBriefing: { type: Type.STRING },
+        missingClarifications: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING }
+        },
+        taskPlan: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              title: { type: Type.STRING },
+              description: { type: Type.STRING },
+              assignedType: { type: Type.STRING, enum: ['agent', 'employee'] },
+              assignedTo: { type: Type.STRING },
+              assignedName: { type: Type.STRING },
+              assignedRole: { type: Type.STRING },
+              deadline: { type: Type.STRING },
+              dependencies: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              requiresApproval: { type: Type.BOOLEAN },
+              status: { type: Type.STRING, enum: ['assigned', 'in_progress', 'ready_for_review', 'completed'] },
+              deliverablePreview: { type: Type.STRING }
+            },
+            required: ['title', 'description', 'assignedType', 'assignedTo', 'assignedName', 'deadline', 'requiresApproval', 'status']
+          }
+        }
+      },
+      required: ['campaignTitle', 'managerBriefing', 'taskPlan']
+    };
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: `Client Goal: "${goal}"\nBrand Context: ${JSON.stringify(brandProfile)}`,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema: schema,
+        temperature: 0.6
+      }
+    });
+
+    const parsed = JSON.parse(response.text || '{}');
+    const taskPlan = (parsed.taskPlan || []).map((t: any, i: number) => ({
+      ...t,
+      id: t.id || `task_${Date.now()}_${i + 1}`
+    }));
+
+    return res.json({
+      success: true,
+      campaignTitle: parsed.campaignTitle || 'Creative Campaign',
+      managerBriefing: parsed.managerBriefing || 'Goal analyzed and tasks dispatched.',
+      missingClarifications: parsed.missingClarifications || [],
+      taskPlan
+    });
+  } catch (err: any) {
+    console.error('[TeamHub] coordinate goal error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to coordinate goal.' });
   }
-}, 30000);
+}

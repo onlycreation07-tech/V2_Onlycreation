@@ -21,10 +21,13 @@ import {
   Target,
   BarChart3,
   Layers,
-  Sparkles
+  Sparkles,
+  MessageSquare,
+  X
 } from 'lucide-react';
-import { DepartmentTeam, Employee, AIAgentId } from '../../types';
+import { DepartmentTeam, Employee, AIAgentId, BrandProfile } from '../../types';
 import { AI_AGENTS_LIST } from '../../services/agentService';
+import IsolatedAgentChat from './IsolatedAgentChat';
 
 interface DepartmentTeamsRosterProps {
   departments: DepartmentTeam[];
@@ -34,7 +37,13 @@ interface DepartmentTeamsRosterProps {
   onUpdateDepartmentManager: (deptId: string, managerId: AIAgentId) => void;
   onToggleDepartmentBot?: (deptId: string, enabled: boolean) => void;
   onAssignDepartmentBot?: (deptId: string, botId: AIAgentId | null) => void;
-  onSelectAgentForChat: (agentId: AIAgentId) => void;
+  onSelectAgentForChat?: (agentId: AIAgentId) => void;
+  // Private CXO Chat props
+  agentChatHistories?: Record<string, Array<any>>;
+  onSendMessage?: (agentId: AIAgentId, text: string, useGoogleGrounding: boolean) => Promise<void>;
+  onClearHistory?: (agentId: AIAgentId) => void;
+  isSendingMessage?: boolean;
+  brandProfile?: BrandProfile;
 }
 
 export default function DepartmentTeamsRoster({
@@ -45,11 +54,17 @@ export default function DepartmentTeamsRoster({
   onUpdateDepartmentManager,
   onToggleDepartmentBot,
   onAssignDepartmentBot,
-  onSelectAgentForChat
+  onSelectAgentForChat,
+  agentChatHistories,
+  onSendMessage,
+  onClearHistory,
+  isSendingMessage,
+  brandProfile
 }: DepartmentTeamsRosterProps) {
   const [selectedDeptId, setSelectedDeptId] = useState<string>('dept-growth');
   const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
   const [isReassignModalOpen, setIsReassignModalOpen] = useState(false);
+  const [activeCxoBotId, setActiveCxoBotId] = useState<AIAgentId | null>(null);
 
   // New Employee Form State
   const [newEmpName, setNewEmpName] = useState('');
@@ -157,7 +172,7 @@ export default function DepartmentTeamsRoster({
               <Users size={18} />
             </span>
             <h2 className="text-base md:text-lg font-bold text-white tracking-tight flex items-center gap-2">
-              Hybrid Department Teams & AI Management
+              Departments & Team Roster
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/10 border border-white/10 text-white/70">
                 {employees.length} Humans · {departments.length} AI Managers
               </span>
@@ -179,6 +194,58 @@ export default function DepartmentTeamsRoster({
           <Plus size={14} />
           <span>Add Human Employee</span>
         </button>
+      </div>
+
+      {/* Executive CXO Suite: Chat with Bots Individually in Private Office */}
+      <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+          <div className="flex items-center gap-2">
+            <Bot size={16} className="text-amber-400" />
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+              Executive CXO Suite · Private 1-on-1 Office
+            </h3>
+            <span className="text-[9px] px-2 py-0.5 rounded-full bg-sleek-violet/20 text-sleek-violet font-mono uppercase">
+              CONFIDENTIAL
+            </span>
+          </div>
+          <span className="text-[11px] text-white/50">
+            Consult privately with any AI Manager just like talking to a CXO
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+          {AI_AGENTS_LIST.map((agent) => (
+            <button
+              key={agent.id}
+              type="button"
+              onClick={() => {
+                setActiveCxoBotId(agent.id);
+                if (onSelectAgentForChat) onSelectAgentForChat(agent.id);
+              }}
+              className="p-3 rounded-xl bg-sleek-zinc border border-white/5 hover:border-sleek-violet/50 hover:bg-white/[0.04] transition-all text-left flex flex-col justify-between group cursor-pointer shadow-sm"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0"
+                  style={{ backgroundColor: `${agent.color}25`, color: agent.color }}
+                >
+                  {agent.name.slice(0, 1)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-white group-hover:text-sleek-violet transition-colors truncate">
+                    {agent.name}
+                  </p>
+                  <p className="text-[10px] text-white/50 truncate">
+                    {agent.role}
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] text-sleek-violet font-semibold flex items-center gap-1 mt-1 group-hover:translate-x-0.5 transition-transform">
+                <MessageSquare size={11} /> Private CXO Chat
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Department Selector Pills */}
@@ -339,11 +406,16 @@ export default function DepartmentTeamsRoster({
 
                   <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => onSelectAgentForChat(currentAiManager.id)}
-                      className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white text-[11px] transition-colors"
-                      title="Direct 1-on-1 Channel"
+                      type="button"
+                      onClick={() => {
+                        setActiveCxoBotId(currentAiManager.id);
+                        if (onSelectAgentForChat) onSelectAgentForChat(currentAiManager.id);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-sleek-violet/20 hover:bg-sleek-violet/30 border border-sleek-violet/40 text-sleek-violet font-semibold text-[11px] transition-all flex items-center gap-1.5"
+                      title="Open Private Closed-Door CXO Chat"
                     >
-                      Chat 1-on-1
+                      <MessageSquare size={12} />
+                      <span>Private CXO Chat</span>
                     </button>
                     <button
                       onClick={() => handleOpenReassign(selectedDept.id, selectedDept.aiManagerId)}
@@ -765,6 +837,60 @@ export default function DepartmentTeamsRoster({
               >
                 Confirm Assignment
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Private CXO Chat Closed-Door Consultation Modal */}
+      {activeCxoBotId && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-fadeIn">
+          <div className="w-full max-w-4xl bg-sleek-zinc border border-white/10 rounded-2xl flex flex-col h-[85vh] shadow-2xl overflow-hidden">
+            {/* CXO Room Header */}
+            <div className="p-4 border-b border-white/10 flex items-center justify-between bg-black/50 shrink-0">
+              <div className="flex items-center gap-3">
+                <div 
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shadow-inner"
+                  style={{ 
+                    backgroundColor: `${AI_AGENTS_LIST.find(a => a.id === activeCxoBotId)?.color}25`, 
+                    color: AI_AGENTS_LIST.find(a => a.id === activeCxoBotId)?.color 
+                  }}
+                >
+                  {AI_AGENTS_LIST.find(a => a.id === activeCxoBotId)?.name.slice(0, 1)}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <span>Private CXO Consultation: {AI_AGENTS_LIST.find(a => a.id === activeCxoBotId)?.name}</span>
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-sleek-violet/20 text-sleek-violet font-mono uppercase">
+                      CLOSED-DOOR
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-white/50">
+                    {AI_AGENTS_LIST.find(a => a.id === activeCxoBotId)?.role}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveCxoBotId(null)}
+                className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+                title="Close Private Office"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Chat Body */}
+            <div className="flex-1 overflow-y-auto p-3 flex flex-col">
+              <IsolatedAgentChat
+                selectedAgentId={activeCxoBotId}
+                onSelectAgentId={(id) => setActiveCxoBotId(id)}
+                chatHistories={agentChatHistories || {}}
+                onSendMessage={onSendMessage || (async () => {})}
+                onClearHistory={onClearHistory || (() => {})}
+                isSending={Boolean(isSendingMessage)}
+                brandProfile={brandProfile || { name: 'Brand', industry: 'General', targetAudience: 'Global', tone: 'Professional', primaryColor: '#8B5CF6', fontVibe: 'modern' }}
+              />
             </div>
           </div>
         </div>

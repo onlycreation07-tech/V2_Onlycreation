@@ -14,6 +14,8 @@ import CreationAIChat from './components/chat/CreationAIChat';
 import AIStudioSuite from './components/studio/AIStudioSuite';
 import AITeamHub from './components/agents/AITeamHub';
 import TeamHubWorkspace from './components/team-hub/TeamHubWorkspace';
+import AdWizardWorkspace from './components/ad-wizard/AdWizardWorkspace';
+import ContentEngineWorkspace from './components/content-engine/ContentEngineWorkspace';
 import ContentCalendarScreen from './components/calendar/ContentCalendarScreen';
 import AssetLibraryScreen from './components/library/AssetLibraryScreen';
 import ProjectsScreen from './components/projects/ProjectsScreen';
@@ -296,7 +298,7 @@ function AppContent() {
     }
   };
 
-  const isPrimaryWarmTab = ['chat', 'studio', 'team-hub', 'agents', 'projects', 'calendar', 'library'].includes(currentView);
+  const isPrimaryWarmTab = ['chat', 'studio', 'team-hub', 'agents', 'projects', 'calendar', 'library', 'ad-wizard', 'content-engine'].includes(currentView);
 
   return (
     <div className="min-h-screen bg-sleek-black text-white font-sans selection:bg-sleek-violet selection:text-white flex flex-col">
@@ -322,7 +324,7 @@ function AppContent() {
       />
 
       {/* Main Workspace Frame with Warm-Tab Keep-Alive Architecture */}
-      <main className="flex-1 w-full max-w-7xl mx-auto h-[calc(100vh-65px)] overflow-hidden pb-16 sm:pb-0 relative">
+      <main className={`flex-1 w-full ${currentView === 'content-engine' ? 'max-w-none' : 'max-w-7xl mx-auto'} h-[calc(100vh-65px)] overflow-hidden pb-16 sm:pb-0 relative`}>
         {/* 1. Warm Tab: Creation AI Chat */}
         <div className={`h-full w-full ${currentView === 'chat' ? 'block' : 'hidden'}`}>
           <CreationAIChat
@@ -331,10 +333,32 @@ function AppContent() {
             onOpenAgents={handleOpenAgents}
             onOpenProjects={() => setCurrentView('projects')}
             onConvertToProject={handleConvertToProject}
+            onOpenAdWizard={() => setCurrentView('ad-wizard')}
+            onOpenContentEngine={() => handleOpenStudio('veo_video')}
+            onOpenTeamHub={() => setCurrentView('agents')}
           />
         </div>
 
-        {/* 2. Warm Tab: AI Studio Creative Suite (Keeps Veo video renders & image generators running) */}
+        {/* 2. Warm Tab: Create an Ad Wizard (Guided Creative Brief & Production Studio) */}
+        <div className={`h-full w-full ${currentView === 'ad-wizard' ? 'block' : 'hidden'}`}>
+          <AdWizardWorkspace
+            brandProfile={brandProfile}
+            onClose={() => setCurrentView('chat')}
+            onConvertToProject={handleConvertToProject}
+            onNavigateToStudio={handleOpenStudio}
+          />
+        </div>
+
+        {/* 3. Warm Tab: Content Engine (Video Production Workspace) */}
+        <div className={`h-full w-full ${currentView === 'content-engine' ? 'block' : 'hidden'}`}>
+          <ContentEngineWorkspace
+            brandProfile={brandProfile}
+            onClose={() => setCurrentView('chat')}
+            onConvertToProject={handleConvertToProject}
+          />
+        </div>
+
+        {/* 4. Warm Tab: AI Studio Creative Suite (Keeps Veo video renders & image generators running) */}
         <div className={`h-full w-full ${currentView === 'studio' ? 'block' : 'hidden'}`}>
           <AIStudioSuite
             brandProfile={brandProfile}
